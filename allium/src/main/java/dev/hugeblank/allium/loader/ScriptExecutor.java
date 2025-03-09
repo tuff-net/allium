@@ -47,7 +47,7 @@ public class ScriptExecutor extends EnvironmentManager {
     }
 
     public Varargs reload(InputStream dynamic) throws LuaError, CompileException, IOException {
-        Entrypoint entrypoint = script.getManifest().entrypoints();
+        Entrypoint entrypoint = script.getManifest().entrypoints().get();
         if (entrypoint.hasType(Entrypoint.Type.DYNAMIC)) {
             LuaFunction dynamicFunction = this.load(dynamic, script.getId());
             return LuaThread.runMain(state, dynamicFunction);

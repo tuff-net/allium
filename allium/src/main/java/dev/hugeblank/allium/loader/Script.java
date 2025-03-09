@@ -3,6 +3,8 @@ package dev.hugeblank.allium.loader;
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.ScriptResource;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
+import net.fabricmc.api.EnvType;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.squiddev.cobalt.LuaError;
@@ -27,8 +29,8 @@ public class Script {
     private final Manifest manifest;
     private final Logger logger;
     private final ScriptExecutor executor;
-    // Whether this script was able to register itself
-    private boolean initialized = false; // Whether this scripts Lua side (static and dynamic) was able to execute
+    // Whether this scripts Lua side (static and dynamic) was able to execute
+    private Map<Entrypoint.Type, Boolean> initialized = new HashMap<>();
     protected LuaValue module;
     private final Path path;
     // Resources are stored in a weak set so that if a resource is abandoned, it gets destroyed.
@@ -50,20 +52,25 @@ public class Script {
         }
     }
 
-    public static void reloadAll() {
-        SCRIPTS.forEach((s, script) -> script.reload());
+    public static void reloadAll(@Nullable EnvType envType) {
+        SCRIPTS.forEach((s, script) -> script.reload(envType));
     }
 
     // TODO: Move to Allium API
-    public void reload() {
+    public void reload(@Nullable EnvType envType) {
         destroyAllResources();
-
-        // Re-run dynamic entrypoint again
         try {
-            InputStream dynamicEntrypoint = manifest.entrypoints().containsDynamic() ?
-                    Files.newInputStream(path.resolve(manifest.entrypoints().getDynamic())) :
-                    null;
             // Reload and set the module if all that's provided is a dynamic script
+            final InputStream dynamicEntrypoint;
+            if (envType == null) {
+                dynamicEntrypoint = getInputStream(ScriptRegistry.EnvType.MAIN, Entrypoint.Type.DYNAMIC);
+
+            } else {
+                dynamicEntrypoint = switch (envType) {
+                    case SERVER -> getInputStream(ScriptRegistry.EnvType.SERVER, Entrypoint.Type.DYNAMIC);
+                    case CLIENT -> getInputStream(ScriptRegistry.EnvType.CLIENT, Entrypoint.Type.DYNAMIC);
+                };
+            }
             this.module = manifest.entrypoints().getType().equals(Entrypoint.Type.DYNAMIC) ?
                     executor.reload(dynamicEntrypoint).arg(1) :
                     this.module;
@@ -72,6 +79,12 @@ public class Script {
             unload();
         }
 
+    }
+
+    private InputStream getInputStream(ScriptRegistry.EnvType containerEnvType, Entrypoint.Type entrypointType) throws IOException {
+        return manifest.entrypoints().get(containerEnvType).has(entrypointType) ?
+                Files.newInputStream(path.resolve(manifest.entrypoints().get(containerEnvType).get(entrypointType))) :
+                null;
     }
 
     @LuaWrapped
@@ -121,15 +134,15 @@ public class Script {
         destroyAllResources();
     }
 
-    public void initialize() {
-        if (isInitialized()) return;
+    public void initialize(ScriptRegistry.EnvType containerEnvType) {
+        if (isInitialized(containerEnvType)) return; //TODO: warn?
         try {
             // Create InputStreams for each entrypoint, if it exists
-            InputStream staticEntrypoint = manifest.entrypoints().containsStatic() ?
-                    Files.newInputStream(path.resolve(manifest.entrypoints().getStatic())) :
+            InputStream staticEntrypoint = manifest.entrypoints().get(containerEnvType).has(Entrypoint.Type.STATIC) ?
+                    Files.newInputStream(path.resolve(manifest.entrypoints().get(containerEnvType).get(Entrypoint.Type.STATIC))) :
                     null;
-            InputStream dynamicEntrypoint = manifest.entrypoints().containsDynamic() ?
-                    Files.newInputStream(path.resolve(manifest.entrypoints().getDynamic())) :
+            InputStream dynamicEntrypoint = manifest.entrypoints().get(containerEnvType).has(Entrypoint.Type.DYNAMIC) ?
+                    Files.newInputStream(path.resolve(manifest.entrypoints().get(containerEnvType).get(Entrypoint.Type.DYNAMIC))) :
                     null;
             // Initialize and set module used by require
             this.module = getExecutor().initialize(staticEntrypoint, dynamicEntrypoint).arg(1);
@@ -140,7 +153,7 @@ public class Script {
         }
     }
 
-    public boolean isInitialized() {
+    public boolean isInitialized(ScriptRegistry.EnvType containerEnvType) {
         return initialized;
     }
 
