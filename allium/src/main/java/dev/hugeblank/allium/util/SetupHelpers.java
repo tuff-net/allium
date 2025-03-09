@@ -18,19 +18,25 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class SetupHelpers {
-    private static final Set<Script> SCRIPTS;
 
-    static {
+    public static void collectScripts(ScriptRegistry.EnvType containerEnvType) {
         ImmutableSet.Builder<Script> builder = ImmutableSet.builder();
-        builder.addAll(FileHelper.getValidDirScripts(FileHelper.getScriptsDirectory()));
-        builder.addAll(FileHelper.getValidModScripts());
-        SCRIPTS = builder.build();
-        list(SCRIPTS, "Found Scripts: ", (strBuilder, script) -> strBuilder.append(script.getId()));
+        builder.addAll(FileHelper.getValidDirScripts(FileHelper.getScriptsDirectory(), containerEnvType));
+        builder.addAll(FileHelper.getValidModScripts(containerEnvType));
+
+        Set<Script> scripts = builder.build();
+
+        for (Script script : scripts) {
+            ScriptRegistry.getInstance(containerEnvType).registerScript(script);
+        }
+
+        list(scripts, "Found Scripts: ", (strBuilder, script) -> strBuilder.append(script.getId()));
     }
 
-    public static void initializeScripts(@Nullable EnvType envType, ScriptRegistry.EnvType entrypointEnvType) {
-        SCRIPTS.forEach(Script::initialize);
-        SetupHelpers.list(SCRIPTS, "Initialized Scripts: ", (builder, script) -> {
+    public static void initializeScripts(ScriptRegistry.EnvType containerEnvType) {
+        ScriptRegistry registry = ScriptRegistry.getInstance(containerEnvType);
+        registry.forEach(Script::initialize);
+        SetupHelpers.list(registry.getScripts(), "Initialized Scripts: ", (builder, script) -> {
             if (script.isInitialized()) builder.append(script.getId());
         });
     }
@@ -42,7 +48,7 @@ public class SetupHelpers {
         final String affix;
         if (envType == null) {
             containers = instance.getEntrypointContainers(Allium.ID, AlliumExtension.class);
-            affix = "";
+            affix = "Common";
         } else {
             containers = switch (envType) {
                 case CLIENT -> instance.getEntrypointContainers(Allium.ID+"-client", AlliumExtension.class);

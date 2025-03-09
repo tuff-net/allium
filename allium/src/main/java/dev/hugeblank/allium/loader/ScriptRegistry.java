@@ -1,36 +1,43 @@
 package dev.hugeblank.allium.loader;
 
+import com.google.common.collect.Sets;
+
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
 
 public class ScriptRegistry {
-    public static final ScriptRegistry MAIN;
+    public static final ScriptRegistry COMMON;
     public static final ScriptRegistry CLIENT;
     public static final ScriptRegistry SERVER;
 
+    private static final Map<net.fabricmc.api.EnvType, EnvType> TYPEMAP = new HashMap<>();
+
     private final EnvType envType;
     private final Map<String, Script> scripts;
-    private final Map<Key, Script> scriptKeys;
 
     private ScriptRegistry(EnvType envType) {
         this.envType = envType;
         this.scripts = new HashMap<>();
-        this.scriptKeys = new HashMap<>();
+    }
+
+    public void reloadAll() {
+        getInstance(envType).forEach(Script::reload);
     }
 
     public void registerScript(Script script) {
         String id = script.getId();
         if (!scripts.containsKey(id)) {
             scripts.put(id, script);
-            Key key = new Key(id);
-            scriptKeys.put(key, script);
+        } else {
+            throw new RuntimeException("Script with ID is already loaded!");
         }
-        // TODO: Throw an error or something?
     }
 
-    public void unloadScript(Key key) {
-        if (scriptKeys.containsKey(key)) {
-            scriptKeys.get(key).unload();
+    public void unloadScript(String name) {
+        if (scripts.containsKey(name)) {
+            scripts.get(name).unload();
         }
     }
 
@@ -46,36 +53,45 @@ public class ScriptRegistry {
         return scripts.get(name);
     }
 
-    public static class Key {
-        private final String id;
+    public void forEach(Consumer<Script> callback) {
+        scripts.forEach((id, script) -> callback.accept(script));
+    }
 
-        Key(String id) {
-            this.id = id;
-        }
+    public Set<Script> getScripts() {
+        return Sets.newHashSet(scripts.values());
+    }
 
-        public String getId() {
-            return id;
-        }
+    public static ScriptRegistry getInstance(EnvType type) {
+        return switch (type) {
+            case SERVER -> SERVER;
+            case COMMON -> COMMON;
+            case CLIENT -> CLIENT;
+        };
     }
 
     static {
-        MAIN = new ScriptRegistry(EnvType.MAIN);
+        COMMON = new ScriptRegistry(EnvType.COMMON);
         CLIENT = new ScriptRegistry(EnvType.CLIENT);
         SERVER = new ScriptRegistry(EnvType.SERVER);
     }
 
     public enum EnvType {
-        MAIN("main"),
-        CLIENT("client"),
-        SERVER("server");
+        COMMON("common", null), // common & server code
+        CLIENT("client", net.fabricmc.api.EnvType.CLIENT), // client code only
+        SERVER("server", net.fabricmc.api.EnvType.SERVER); // server code only
 
         private final String key;
-        EnvType(String key) {
+        EnvType(String key, net.fabricmc.api.EnvType type) {
             this.key = key;
+            TYPEMAP.put(type, this);
         }
 
         public String getKey() {
             return key;
+        }
+
+        public static EnvType unwrap(net.fabricmc.api.EnvType type) {
+            return TYPEMAP.get(type);
         }
     }
 }

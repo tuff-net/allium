@@ -48,7 +48,8 @@ public class Allium implements ModInitializer {
         MAPPINGS = YarnLoader.init();
 
         SetupHelpers.initializeExtensions(null);
-        SetupHelpers.initializeScripts(null, ScriptRegistry.EnvType.MAIN);
+        SetupHelpers.collectScripts(ScriptRegistry.EnvType.COMMON);
+        SetupHelpers.initializeScripts(ScriptRegistry.EnvType.COMMON);
     }
 
 }

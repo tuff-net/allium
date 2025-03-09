@@ -3,8 +3,6 @@ package dev.hugeblank.allium.loader;
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.ScriptResource;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
-import net.fabricmc.api.EnvType;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.squiddev.cobalt.LuaError;
@@ -17,74 +15,48 @@ import org.squiddev.cobalt.function.LuaFunction;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
 @LuaWrapped()
 public class Script {
-    private static final Map<String, Script> SCRIPTS = new HashMap<>();
 
     private final Manifest manifest;
+    private final Path path;
+    private final ScriptRegistry.EnvType envType;
     private final Logger logger;
     private final ScriptExecutor executor;
-    // Whether this scripts Lua side (static and dynamic) was able to execute
-    private Map<Entrypoint.Type, Boolean> initialized = new HashMap<>();
-    protected LuaValue module;
-    private final Path path;
+    // Whether this script was able to execute (isolated by environment)
+    private final Set<ScriptRegistry.EnvType> initialized = new HashSet<>();
     // Resources are stored in a weak set so that if a resource is abandoned, it gets destroyed.
     private final Set<ScriptResource> resources = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean destroyingResources = false;
 
-    public Script(Manifest manifest, Path path) {
+    protected LuaValue module;
+
+    public Script(Manifest manifest, Path path, ScriptRegistry.EnvType envType) {
         this.manifest = manifest;
         this.path = path;
-        this.executor = new ScriptExecutor(this);
+        this.envType = envType;
+        this.executor = new ScriptExecutor(this, path, envType, manifest.entrypoints().get(envType));
         this.logger = LoggerFactory.getLogger('@' + manifest.id());
-        try {
-            if (SCRIPTS.containsKey(manifest.id()))
-                throw new Exception("Script with ID is already loaded!");
-            SCRIPTS.put(manifest.id(), this);
-        } catch (Exception e) {
-            getLogger().error("Could not load allium script " + getId(), e);
-            unload();
-        }
     }
 
-    public static void reloadAll(@Nullable EnvType envType) {
-        SCRIPTS.forEach((s, script) -> script.reload(envType));
-    }
-
-    // TODO: Move to Allium API
-    public void reload(@Nullable EnvType envType) {
+    // TODO: Move to Bouquet
+    public void reload() {
         destroyAllResources();
         try {
             // Reload and set the module if all that's provided is a dynamic script
-            final InputStream dynamicEntrypoint;
-            if (envType == null) {
-                dynamicEntrypoint = getInputStream(ScriptRegistry.EnvType.MAIN, Entrypoint.Type.DYNAMIC);
-
-            } else {
-                dynamicEntrypoint = switch (envType) {
-                    case SERVER -> getInputStream(ScriptRegistry.EnvType.SERVER, Entrypoint.Type.DYNAMIC);
-                    case CLIENT -> getInputStream(ScriptRegistry.EnvType.CLIENT, Entrypoint.Type.DYNAMIC);
-                };
-            }
-            this.module = manifest.entrypoints().getType().equals(Entrypoint.Type.DYNAMIC) ?
-                    executor.reload(dynamicEntrypoint).arg(1) :
+            this.module = manifest.entrypoints().get(envType).has(Entrypoint.Type.DYNAMIC) ?
+                    executor.reload().arg(1) :
                     this.module;
         } catch (Throwable e) {
+            //noinspection StringConcatenationArgumentToLogCall
             getLogger().error("Could not reload allium script " + getId(), e);
             unload();
         }
 
-    }
-
-    private InputStream getInputStream(ScriptRegistry.EnvType containerEnvType, Entrypoint.Type entrypointType) throws IOException {
-        return manifest.entrypoints().get(containerEnvType).has(entrypointType) ?
-                Files.newInputStream(path.resolve(manifest.entrypoints().get(containerEnvType).get(entrypointType))) :
-                null;
     }
 
     @LuaWrapped
@@ -130,31 +102,26 @@ public class Script {
     }
 
     public void unload() {
-        SCRIPTS.remove(manifest.name(), this);
         destroyAllResources();
     }
 
-    public void initialize(ScriptRegistry.EnvType containerEnvType) {
-        if (isInitialized(containerEnvType)) return; //TODO: warn?
+    public void initialize() {
+        if (isInitialized()) {
+            getLogger().warn("Attempted to initialize while already active!");
+            return;
+        }
         try {
-            // Create InputStreams for each entrypoint, if it exists
-            InputStream staticEntrypoint = manifest.entrypoints().get(containerEnvType).has(Entrypoint.Type.STATIC) ?
-                    Files.newInputStream(path.resolve(manifest.entrypoints().get(containerEnvType).get(Entrypoint.Type.STATIC))) :
-                    null;
-            InputStream dynamicEntrypoint = manifest.entrypoints().get(containerEnvType).has(Entrypoint.Type.DYNAMIC) ?
-                    Files.newInputStream(path.resolve(manifest.entrypoints().get(containerEnvType).get(Entrypoint.Type.DYNAMIC))) :
-                    null;
             // Initialize and set module used by require
-            this.module = getExecutor().initialize(staticEntrypoint, dynamicEntrypoint).arg(1);
-            this.initialized = true; // If all these steps are successful, we can set initialized to true
+            this.module = getExecutor().initialize().arg(1);
+            this.initialized.add(envType); // If all these steps are successful, we can set initialized to true
         } catch (Throwable e) {
             getLogger().error("Could not initialize allium script " + getId(), e);
             unload();
         }
     }
 
-    public boolean isInitialized(ScriptRegistry.EnvType containerEnvType) {
-        return initialized;
+    public boolean isInitialized() {
+        return initialized.contains(envType);
     }
 
     // return null if file isn't contained within Scripts path, or if it doesn't exist.
@@ -165,7 +132,7 @@ public class Script {
             return Dispatch.call(state, loadValue);
         } catch (FileNotFoundException e) {
             // This should never happen, but if it does, boy do I want to know.
-            Allium.LOGGER.warn("File claimed to exist but threw a not found exception...", e);
+            Allium.LOGGER.warn("File claimed to exist but threw a not found exception... </3", e);
             return null;
         } catch (CompileException | IOException e) {
             throw new LuaError(e);
@@ -177,13 +144,13 @@ public class Script {
         return module;
     }
 
-    @LuaWrapped
-    public Path getPath() {
-        return path;
-    }
 
     public Manifest getManifest() {
         return manifest;
+    }
+
+    public Path getPath() {
+        return path;
     }
 
     @LuaWrapped
@@ -207,14 +174,6 @@ public class Script {
 
     public ScriptExecutor getExecutor() {
         return executor;
-    }
-
-    public static Script getFromID(String id) {
-        return SCRIPTS.get(id);
-    }
-
-    public static Collection<Script> getAllScripts() {
-        return SCRIPTS.values();
     }
 
     @Override
