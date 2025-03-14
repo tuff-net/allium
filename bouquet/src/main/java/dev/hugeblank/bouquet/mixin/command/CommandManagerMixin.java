@@ -1,14 +1,12 @@
 package dev.hugeblank.bouquet.mixin.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import dev.hugeblank.bouquet.api.event.ServerEvents;
 import dev.hugeblank.bouquet.api.lib.AlliumLib;
-import dev.hugeblank.bouquet.api.lib.DefaultEventsLib;
 import dev.hugeblank.bouquet.api.lib.commands.CommandRegisterEntry;
-import dev.hugeblank.bouquet.util.DebugLoggerWrapper;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
-import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -16,11 +14,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(CommandManager.class)
 public class CommandManagerMixin {
-
-    @Mutable
-    @Final
-    @Shadow
-    private static Logger LOGGER;
 
     @Mutable
     @Final
@@ -44,15 +37,10 @@ public class CommandManagerMixin {
         });
     }
 
-    @Inject(at = @At("TAIL"), method = "<clinit>")
-    private static void clinit(CallbackInfo ci) {
-        LOGGER = new DebugLoggerWrapper(LOGGER);
-    }
-
     @Unique
     private static void queueEvent(CommandRegisterEntry entry, boolean result) {
-        DefaultEventsLib.COMMAND_REGISTER.invoker().onCommandRegistration(
-                entry.script().getId(),
+        ServerEvents.COMMAND_REGISTER.invoker().onCommandRegistration(
+                entry.script().getID(),
                 entry.builder().getLiteral(),
                 result
         );

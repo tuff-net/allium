@@ -2,15 +2,13 @@ package dev.hugeblank.allium.loader;
 
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.LibraryInitializer;
-import dev.hugeblank.allium.loader.mixin.MixinLib;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import dev.hugeblank.allium.api.WrappedLuaLibrary;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import org.squiddev.cobalt.*;
 import org.squiddev.cobalt.function.LibFunction;
 import org.squiddev.cobalt.function.VarArgFunction;
-import org.squiddev.cobalt.lib.Bit32Lib;
-import org.squiddev.cobalt.lib.CoreLibraries;
+import org.squiddev.cobalt.lib.*;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -20,69 +18,55 @@ public class EnvironmentManager {
 
     private static final Set<LibraryInitializer> INITIALIZERS = new HashSet<>();
     private static final Set<WrappedLuaLibrary> LIBRARIES = new HashSet<>();
-    private static final Set<LibraryInitializer> PRELAUNCH_INITIALIZERS = new HashSet<>();
-    private static final Set<WrappedLuaLibrary> PRELAUNCH_LIBRARIES = new HashSet<>();
 
     EnvironmentManager() {
         this.state = new LuaState();
     }
 
-    protected LuaTable createPreLaunchEnvironment(Script script) {
-        LuaTable globals = CoreLibraries.debugGlobals(state);
-        Bit32Lib.add(state, globals);
+    protected void createEnvironment(Script script, Allium.EnvType envType) {
+        LuaTable globals = state.globals();
+        BaseLib.add(globals);
+        try {
+            TableLib.add(state, globals);
+            StringLib.add(state, globals);
+            CoroutineLib.add(state, globals);
+            MathLib.add(state, globals);
+            Utf8Lib.add(state, globals);
+            Bit32Lib.add(state, globals);
 
-        LibFunction.setGlobalLibrary(state, globals, "script",
-                TypeCoercions.toLuaValue(script, EClass.fromJava(Script.class))
-        );
+            LibFunction.setGlobalLibrary(state, globals, "script",
+                    TypeCoercions.toLuaValue(script, EClass.fromJava(Script.class))
+            );
+        } catch (LuaError error) {
+            script.getLogger().error("Error loading library:", error);
+        }
+
         globals.rawset( "print", new PrintMethod(script) );
         globals.rawset( "_HOST", ValueFactory.valueOf(Allium.ID + "_" + Allium.VERSION) );
 
-        PRELAUNCH_INITIALIZERS.forEach(initializer -> initializer.init(script).add(state, globals));
-        PRELAUNCH_LIBRARIES.forEach(library -> library.add(state, globals));
-
-        return globals;
+        INITIALIZERS.forEach(initializer -> loadLibrary(script, state, globals, initializer.init(script, envType)));
+        LIBRARIES.forEach(library -> loadLibrary(script, state, globals, library));
     }
 
-    protected void bindExtendedLibraries(Script script, LuaTable globals) {
-        INITIALIZERS.forEach(initializer -> initializer.init(script).add(state, globals));
-        LIBRARIES.forEach(library -> library.add(state, globals));
+    private static void loadLibrary(Script script, LuaState state, LuaTable globals, WrappedLuaLibrary adder) {
+        try {
+            adder.add(state, globals);
+        } catch (LuaError error) {
+            script.getLogger().error("Error loading library:", error);
+        }
     }
 
-    /**
-     * register a library to be used by static and dynamic entrypoints.
-     * @param initializer Library constructor that accepts a script.
-     */
+
     public static void registerLibrary(LibraryInitializer initializer) {
         INITIALIZERS.add(initializer);
     }
 
-    /**
-     * register a library to be used by static and dynamic entrypoints.
-     * @param library LuaWrapped annotated class object.
-     */
     public static void registerLibrary(WrappedLuaLibrary library) {
         LIBRARIES.add(library);
     }
 
-    /**
-     * register a library to be used by preLaunch entrypoint.
-     * @param initializer Library constructor that accepts a script.
-     */
-    public static void registerPreLaunchLibrary(LibraryInitializer initializer) {
-        PRELAUNCH_INITIALIZERS.add(initializer);
-    }
-
-    /**
-     * register a library to be used by preLaunch entrypoints.
-     * @param library LuaWrapped annotated class object.
-     */
-    public static void registerPreLaunchLibrary(WrappedLuaLibrary library) {
-        PRELAUNCH_LIBRARIES.add(library);
-    }
-
     static {
-        registerPreLaunchLibrary(PackageLib::new);
-        registerPreLaunchLibrary(MixinLib::new);
+        registerLibrary(PackageLib::new);
     }
 
     private static final class PrintMethod extends VarArgFunction {

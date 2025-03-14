@@ -18,11 +18,17 @@
 
   "environment": "*",
   "entrypoints": {
+    "preLaunch": [
+      "dev.hugeblank.allium.AlliumPreLaunch"
+    ],
     "main": [
       "dev.hugeblank.allium.Allium"
     ],
-    "preLaunch": [
-      "dev.hugeblank.allium.AlliumPreLaunch"
+    "client": [
+      "dev.hugeblank.allium.AlliumClient"
+    ],
+    "server": [
+      "dev.hugeblank.allium.AlliumServer"
     ]
   },
   "mixins": [],

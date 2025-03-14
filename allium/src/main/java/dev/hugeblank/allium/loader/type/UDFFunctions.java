@@ -1,7 +1,10 @@
 package dev.hugeblank.allium.loader.type;
 
+import dev.hugeblank.allium.Allium;
+import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import dev.hugeblank.allium.util.ArgumentUtils;
+import dev.hugeblank.allium.util.JavaHelpers;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
 import me.basiqueevangelist.enhancedreflection.api.typeuse.EClassUse;
@@ -31,6 +34,13 @@ public final class UDFFunctions<T> extends VarArgFunction {
 
     @Override
     public Varargs invoke(LuaState state, Varargs args) throws LuaError {
+//        if (Allium.DEVELOPMENT) { // Output the script with which the invoking state belongs to (common scripts only)
+//            Allium.LOGGER.info("{} {}.{}",
+//                    ScriptRegistry.COMMON.hasScript(state) ? ScriptRegistry.COMMON.getScript(state).getId() : "ignore",
+//                    clazz.name(),
+//                    name
+//            );
+//        }
         List<String> paramList = new ArrayList<>(); // String for displaying errors more smartly
         StringBuilder error = new StringBuilder("Could not find parameter match for called function \"" +
             name + "\" for \"" + clazz.name() + "\"" +
@@ -38,7 +48,19 @@ public final class UDFFunctions<T> extends VarArgFunction {
         );
 
         try {
-            T instance = boundReceiver != null || isStatic ? boundReceiver : args.arg(1).checkUserdata(clazz.raw());
+//            final T instance;
+//            if (boundReceiver != null || isStatic) {
+//                instance = boundReceiver;
+//            } else if (args.arg(1) instanceof AlliumUserdata<?> userdata) {
+//                try {
+//                    instance = userdata.toUserdata(clazz);
+//                } catch (ClassCastException e) {
+//                    throw new LuaError(e);
+//                }
+//            } else {
+//                throw new LuaError("Invocation has no instance"); // This should never happen.
+//            }
+            T instance = boundReceiver != null || isStatic ? boundReceiver : JavaHelpers.checkUserdata(args.arg(1), clazz.raw());
             for (EMethod method : matches) { // For each matched method from the index call
                 var parameters = method.parameters();
                 try {

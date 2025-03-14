@@ -1,17 +1,14 @@
 package dev.hugeblank.allium.loader.type.coercion;
 
-import dev.hugeblank.allium.util.asm.ClassFieldBuilder;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
-import dev.hugeblank.allium.util.asm.AsmUtil;
+import dev.hugeblank.allium.util.AsmUtil;
+import dev.hugeblank.allium.util.ClassFieldBuilder;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
-import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
-import org.squiddev.cobalt.LuaState;
-import org.squiddev.cobalt.LuaValue;
-import org.squiddev.cobalt.ValueFactory;
-import org.squiddev.cobalt.Varargs;
+import org.squiddev.cobalt.*;
+import org.squiddev.cobalt.function.Dispatch;
 import org.squiddev.cobalt.function.LuaFunction;
 
 import java.util.HashMap;
@@ -88,7 +85,13 @@ public class ProxyGenerator {
         int argIndex = 1;
         var args = Type.getArgumentTypes(desc);
         for (int i = 0; i < args.length; i++) {
-            loadAndWrapLocal(m, varPrefix, args, argIndex, i);
+            m.visitVarInsn(ALOAD, varPrefix);
+            m.visitLdcInsn(i);
+            m.visitVarInsn(args[i].getOpcode(ILOAD), argIndex);
+
+            if (args[i].getSort() != Type.OBJECT || args[i].getSort() != Type.ARRAY) {
+                AsmUtil.wrapPrimitive(m, args[i]);
+            }
 
             fields.storeAndGet(m, method.parameters().get(i).parameterType().lowerBound().wrapPrimitive(), EClass.class);
             m.visitMethodInsn(INVOKESTATIC, Type.getInternalName(TypeCoercions.class), "toLuaValue", "(Ljava/lang/Object;Lme/basiqueevangelist/enhancedreflection/api/EClass;)Lorg/squiddev/cobalt/LuaValue;", false);
@@ -105,11 +108,9 @@ public class ProxyGenerator {
         if (!isVoid) m.visitInsn(DUP);
         m.visitVarInsn(ALOAD, 0);
         m.visitFieldInsn(GETFIELD, className, FUNCTION_FIELD_NAME, Type.getDescriptor(LuaFunction.class));
-        m.visitInsn(SWAP);
         m.visitVarInsn(ALOAD, varPrefix);
         m.visitMethodInsn(INVOKESTATIC, Type.getInternalName(ValueFactory.class), "varargsOf", "([Lorg/squiddev/cobalt/LuaValue;)Lorg/squiddev/cobalt/Varargs;", false);
-        m.visitMethodInsn(INVOKEVIRTUAL, Type.getInternalName(LuaFunction.class), "invoke", "(Lorg/squiddev/cobalt/LuaState;Lorg/squiddev/cobalt/Varargs;)Lorg/squiddev/cobalt/Varargs;", false);
-
+        m.visitMethodInsn(INVOKESTATIC, Type.getInternalName(ProxyGenerator.class), "dispatch", "(Lorg/squiddev/cobalt/LuaState;Lorg/squiddev/cobalt/LuaValue;Lorg/squiddev/cobalt/Varargs;)Lorg/squiddev/cobalt/Varargs;", false);
         if (!isVoid) {
             m.visitMethodInsn(INVOKEVIRTUAL, Type.getInternalName(Varargs.class), "first", "()Lorg/squiddev/cobalt/LuaValue;", false);
             fields.storeAndGet(m, method.returnType().upperBound().wrapPrimitive(), EClass.class);
@@ -152,12 +153,9 @@ public class ProxyGenerator {
         }
     }
 
-    public static void loadAndWrapLocal(MethodVisitor methodVisitor, int varPrefix, Type[] args, int local, int argIndex) {
-        methodVisitor.visitVarInsn(ALOAD, varPrefix);
-        methodVisitor.visitLdcInsn(argIndex);
-        methodVisitor.visitVarInsn(args[argIndex].getOpcode(ILOAD), local);
-        if (args[argIndex].getSort() != Type.OBJECT || args[argIndex].getSort() != Type.ARRAY) {
-            AsmUtil.wrapPrimitive(methodVisitor, args[argIndex]);
+    public static Varargs dispatch(LuaState state, LuaValue value, Varargs args) throws UnwindThrowable, LuaError {
+        synchronized (state) {
+            return Dispatch.invoke(state, value, args);
         }
     }
 }

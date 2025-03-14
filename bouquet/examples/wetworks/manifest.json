@@ -4,5 +4,6 @@
   "name": "Wetworks",
   "entrypoints": {
     "dynamic": "wetworks.lua"
-  }
+  },
+  "mappings": "yarn"
 }

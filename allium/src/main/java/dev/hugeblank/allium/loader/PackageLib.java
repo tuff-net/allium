@@ -5,7 +5,9 @@ import dev.hugeblank.allium.loader.type.StaticBinder;
 import dev.hugeblank.allium.api.WrappedLuaLibrary;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.util.JavaHelpers;
+import org.jetbrains.annotations.Nullable;
 import org.squiddev.cobalt.*;
+import org.squiddev.cobalt.debug.DebugFrame;
 import org.squiddev.cobalt.function.*;
 
 import java.io.IOException;
@@ -17,13 +19,17 @@ import java.util.List;
 @LuaWrapped(name="package")
 public class PackageLib implements WrappedLuaLibrary {
     private final Script script;
+    private final Allium.EnvType envType;
+    @LuaWrapped @Nullable public final String environment;
     @LuaWrapped public final LuaTable loaders;
     @LuaWrapped public final LuaTable preload;
     @LuaWrapped public final LuaTable loaded;
     @LuaWrapped public String path;
 
-    public PackageLib(Script script) {
+    public PackageLib(Script script, Allium.EnvType envType) {
         this.script = script;
+        this.envType = envType;
+        this.environment = envType == Allium.EnvType.COMMON ? null : envType.getKey();
         this.path = "./?.lua;./?/init.lua";
         this.preload = new LuaTable();
         this.loaded = new LuaTable();
@@ -31,11 +37,11 @@ public class PackageLib implements WrappedLuaLibrary {
         // When writing a loader in Java, anywhere where a module value can't be determined `nil` should be returned.
         loaders = ValueFactory.listOf(
                 // Loader to check if module has a loader provided by preload table
-                RegisteredFunction.of("preload_loader", this::preloadLoader).create(),
+                RegisteredFunction.ofS("preload_loader", this::preloadLoader).create(),
                 // Loader to check the path internal to the script
-                RegisteredFunction.ofV("path_loader", this::pathLoader).create(),
+                RegisteredFunction.ofS("path_loader", this::pathLoader).create(),
                 // Loader to check the path assuming the first value in the path is a script ID
-                RegisteredFunction.ofV("external_script_loader", this::externScriptLoader).create(),
+                RegisteredFunction.ofS("external_script_loader", this::externScriptLoader).create(),
                 // Loader to check the class files
                 RegisteredFunction.of("java_loader", this::javaLoader).create()
 
@@ -43,35 +49,38 @@ public class PackageLib implements WrappedLuaLibrary {
     }
 
     @Override
-    public LuaValue add(LuaState state, LuaTable globals) {
-        globals.rawset("require", RegisteredFunction.ofV("require", this::require).create());
+    public LuaValue add(LuaState state, LuaTable globals) throws LuaError {
+        globals.rawset("require", RegisteredFunction.ofS("require", this::require).create());
         return WrappedLuaLibrary.super.add(state, globals);
     }
 
-    public LuaValue preloadLoader(LuaState state, LuaValue arg) throws LuaError, UnwindThrowable {
-        if (preload.rawget(arg).isFunction()){
-            return preload.rawget(arg).checkFunction().call(state, arg);
+    public Varargs preloadLoader(LuaState state, DebugFrame frame, Varargs args) throws LuaError, UnwindThrowable {
+        if (preload.rawget(args.arg(1)) instanceof LuaFunction function){
+            return Dispatch.call(state, function);
         }
         return Constants.NIL;
     }
 
-    private Varargs pathLoader(LuaState state, Varargs args) throws LuaError, UnwindThrowable {
+    private static boolean isSameFile(Path path, Script script, Entrypoint entrypoint, Entrypoint.Type type) throws IOException {
+        return entrypoint.has(type) && Files.isSameFile( path, script.getPath().resolve(entrypoint.get(type)));
+    }
+
+    private Varargs pathLoader(LuaState state, DebugFrame frame, Varargs args) throws LuaError, UnwindThrowable {
         String modStr = args.arg(1).checkString();
         Entrypoint entrypoint = script.getManifest().entrypoints();
         for (Path path : getPathsFromModule(script, modStr)) {
             try {
-                if ( // If the script is requiring its own static entrypoint from the dynamic one, give the value.
-                        entrypoint.containsStatic() &&
-                                Files.isSameFile( path, script.getPath().resolve(entrypoint.getStatic()))
-                ) return ValueFactory.varargsOf(script.getModule(), ValueFactory.valueOf(path.toString()));
+                // If the script is requiring its own static entrypoint from the dynamic one, give the value.
+                if (isSameFile(path, script, entrypoint, Entrypoint.Type.STATIC))
+                    return ValueFactory.varargsOf(script.getModule(), ValueFactory.valueOf(path.toString()));
             } catch (IOException ignored) {}
         }
         return loadFromPaths(state, script, modStr);
     }
 
-    private Varargs externScriptLoader(LuaState state, Varargs args) throws LuaError, UnwindThrowable {
+    private Varargs externScriptLoader(LuaState state, DebugFrame frame, Varargs args) throws LuaError, UnwindThrowable {
         String[] path = args.arg(1).checkString().split("\\.");
-        Script candidate = Script.getFromID(path[0]);
+        Script candidate = ScriptRegistry.getInstance(envType).get(path[0]);
         if (candidate != null) {
             if (!candidate.isInitialized()) {
                 candidate.initialize();
@@ -86,7 +95,7 @@ public class PackageLib implements WrappedLuaLibrary {
     }
 
     public LuaValue javaLoader(LuaState state, LuaValue arg) throws LuaError {
-        return StaticBinder.bindClass(JavaHelpers.asClass(arg));
+        return StaticBinder.bindClass(JavaHelpers.asClass(state, arg));
     }
 
     private static String toPath(String[] arr) {
@@ -107,19 +116,14 @@ public class PackageLib implements WrappedLuaLibrary {
             try {
                 // Do not allow entrypoints to get loaded from the path.
                 Entrypoint entrypoint = script.getManifest().entrypoints();
-                boolean loadingEntrypoint = (
-                        entrypoint.containsDynamic() &&
-                                Files.isSameFile(path, script.getPath().resolve(entrypoint.getDynamic()))
-                ) || (
-                        entrypoint.containsStatic() &&
-                                Files.isSameFile(path, script.getPath().resolve(entrypoint.getStatic()))
-                );
+                boolean loadingEntrypoint = isSameFile(path, script, entrypoint, Entrypoint.Type.DYNAMIC) ||
+                        isSameFile(path, script, entrypoint, Entrypoint.Type.STATIC);
 
                 if (loadingEntrypoint) {
                     Allium.LOGGER.warn(
                             "Attempted to require an entrypoint of script '{}'." +
                             " Use require(\"{}\") if you'd like to get the value loaded by the entrypoint script.",
-                            script.getId(), script.getId()
+                            script.getID(), script.getID()
                     ); // Slap on the wrist. Allium has already handled loading of the script.
                     return Constants.NIL;
                 }
@@ -142,14 +146,13 @@ public class PackageLib implements WrappedLuaLibrary {
         return pathList;
     }
 
-    private Varargs require(LuaState state, Varargs args) throws LuaError, UnwindThrowable {
+    private Varargs require(LuaState state, DebugFrame frame, Varargs args) throws LuaError, UnwindThrowable {
         LuaString mod = args.arg(1).checkLuaString();
         if (!loaded.rawget(mod).isNil()) return loaded.rawget(mod);
         for (int i = 1; i <= loaders.length(); i++) {
             LuaValue loader = loaders.rawget(i);
-            if (loader.isFunction()) {
-                LuaFunction f = loader.checkFunction();
-                Varargs contents = f.call(state, mod);
+            if (loader instanceof LuaFunction f) {
+                Varargs contents = Dispatch.call(state, f, mod);
                 if (contents != Constants.NIL) {
                     loaded.rawset(mod, contents.arg(1));
                     return contents;

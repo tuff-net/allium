@@ -1,18 +1,14 @@
 package dev.hugeblank.allium;
 
+import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.YarnLoader;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import dev.hugeblank.allium.api.AlliumExtension;
-import dev.hugeblank.allium.loader.Script;
-import dev.hugeblank.allium.loader.ScriptLoader;
 import dev.hugeblank.allium.loader.mixin.MixinClassBuilder;
 import dev.hugeblank.allium.util.EldritchURLStreamHandler;
 import dev.hugeblank.allium.util.FileHelper;
-import dev.hugeblank.allium.util.YarnLoader;
 import dev.hugeblank.allium.util.asm.VisitedClass;
-import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import org.spongepowered.asm.mixin.Mixins;
 
@@ -28,11 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
-
-import static dev.hugeblank.allium.Allium.*;
 
 public class AlliumPreLaunch implements PreLaunchEntrypoint {
     public static final String MIXIN_CONFIG_NAME = "allium-generated.mixins.json";
@@ -52,9 +44,6 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
             throw new RuntimeException("Couldn't create config directory", e);
         }
 
-        Allium.LOGGER.info("Loading NathanFudge's Yarn Remapper");
-        Allium.MAPPINGS = YarnLoader.init();
-
         try {
             if (!Files.exists(FileHelper.PERSISTENCE_DIR)) Files.createDirectory(FileHelper.PERSISTENCE_DIR);
             if (!Files.exists(FileHelper.CONFIG_DIR)) Files.createDirectory(FileHelper.CONFIG_DIR);
@@ -62,22 +51,8 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
             throw new RuntimeException("Couldn't create config directory", e);
         }
 
-        LOGGER.info("Loading NathanFudge's Yarn Remapper");
-        MAPPINGS = YarnLoader.init();
 
-        Set<ModContainer> mods = new HashSet<>();
-        FabricLoader.getInstance().getEntrypointContainers(ID, AlliumExtension.class)
-                .forEach((initializer) -> {
-                    initializer.getEntrypoint().onInitialize();
-                    mods.add(initializer.getProvider());
-                });
-        list(mods, "Initialized Extensions: ", (builder, mod) -> builder.append(mod.getMetadata().getId()));
-
-        list(ScriptLoader.SCRIPTS, "Found Scripts: ", (builder, script) -> builder.append(script.getId()));
-        ScriptLoader.SCRIPTS.forEach(Script::preLaunch);
-        list(ScriptLoader.SCRIPTS, "Pre-initialized: ", (builder, script) -> {
-            if (script.isPreInitialized()) builder.append(script.getId());
-        });
+        // TODO collectscript here probably
 
         // Create a new mixin config
         JsonObject config = new JsonObject();
@@ -123,13 +98,15 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
         Mixins.addConfiguration(MIXIN_CONFIG_NAME);
         VisitedClass.clear();
         complete = true;
+        clearDumpDirectory();
+        Mappings.LOADERS.register(new YarnLoader());
     }
 
     private static void clearDumpDirectory() {
-        if (DEVELOPMENT) {
+        if (Allium.DEVELOPMENT) {
             try {
-                if (Files.isDirectory(DUMP_DIRECTORY))
-                    Files.walkFileTree(DUMP_DIRECTORY, new FileVisitor<>() {
+                if (Files.isDirectory(Allium.DUMP_DIRECTORY))
+                    Files.walkFileTree(Allium.DUMP_DIRECTORY, new FileVisitor<>() {
                         @Override
                         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                             return FileVisitResult.CONTINUE;

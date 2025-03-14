@@ -1,5 +1,6 @@
 package dev.hugeblank.allium.loader.type.coercion;
 
+import dev.hugeblank.allium.loader.type.AlliumUserdata;
 import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.UDFFunctions;
 import dev.hugeblank.allium.loader.type.UserdataFactory;
@@ -10,6 +11,7 @@ import me.basiqueevangelist.enhancedreflection.api.*;
 import me.basiqueevangelist.enhancedreflection.api.typeuse.EClassUse;
 import net.minecraft.util.Identifier;
 import org.squiddev.cobalt.*;
+import org.squiddev.cobalt.function.LuaFunction;
 
 import java.lang.reflect.Array;
 import java.util.*;
@@ -52,10 +54,13 @@ public class TypeCoercions {
 
         if (value.isNil())
             return null;
-
-        try {
-            return value.checkUserdata(clatz.wrapPrimitive().raw());
-        } catch (LuaError ignored) {}
+        
+        if (value instanceof AlliumUserdata<?> userdata)
+            try {
+                return userdata.toUserdata(clatz.wrapPrimitive());
+            } catch (ClassCastException e) {
+                throw new InvalidArgumentException(e);
+            }
 
         clatz = clatz.unwrapPrimitive();
 
@@ -89,15 +94,24 @@ public class TypeCoercions {
             }
         }
 
-        if (value.isFunction() && clatz.type() == ClassType.INTERFACE) { // Callbacks
-            var func = value.checkFunction();
-            EMethod ifaceMethod = functionalInterfaceMethod(clatz);
+        if (value instanceof LuaFunction func && clatz.type() == ClassType.INTERFACE) { // Callbacks
+            EMethod ifaceMethod = null;
 
-            if (ifaceMethod == null) {
-                return value.checkUserdata(clatz.raw());
-            } else {
-                return ProxyGenerator.getProxyFactory(clatz, ifaceMethod).apply(state, func);
+            int unimplemented = 0;
+            for (var meth : clatz.methods()) {
+                if (meth.isAbstract()) {
+                    unimplemented++;
+                    ifaceMethod = meth;
+
+                    if (unimplemented > 1) {
+                        break;
+                    }
+                }
             }
+
+            if (unimplemented == 1) {
+                return ProxyGenerator.getProxyFactory(clatz, ifaceMethod).apply(state, func);
+            } // TODO: Weird code was removed here. Did that break anything?
         }
 
         throw new InvalidArgumentException("Couldn't convert " + value + " to java! Target type is " + clatz);
@@ -142,11 +156,24 @@ public class TypeCoercions {
             }
             return table;
         } else if (klass.type() == ClassType.INTERFACE && klass.hasAnnotation(FunctionalInterface.class)) {
-            EMethod ifaceMethod = functionalInterfaceMethod(klass);
-            if (ifaceMethod == null) {
-                return UserdataFactory.of(klass).create(klass.cast(out));
-            } else {
+            EMethod ifaceMethod = null;
+
+            int unimplemented = 0;
+            for (var meth : klass.methods()) {
+                if (meth.isAbstract()) {
+                    unimplemented++;
+                    ifaceMethod = meth;
+
+                    if (unimplemented > 1) {
+                        break;
+                    }
+                }
+            }
+
+            if (unimplemented == 1) {
                 return new UDFFunctions(klass, Collections.singletonList(ifaceMethod), ifaceMethod.name(), out, false);
+            } else {
+                return UserdataFactory.of(klass).create(klass.cast(out));
             }
         } else if (klass.raw().isAssignableFrom(out.getClass())) {
             EClass<?> trueRet = EClass.fromJava(out.getClass());
@@ -165,24 +192,6 @@ public class TypeCoercions {
         } else {
             return Constants.NIL;
         }
-    }
-
-    private static EMethod functionalInterfaceMethod(EClass<?> klass) {
-        EMethod ifaceMethod = null;
-
-        int unimplemented = 0;
-        for (var meth : klass.methods()) {
-            if (meth.isAbstract()) {
-                unimplemented++;
-                ifaceMethod = meth;
-
-                if (unimplemented > 1) {
-                    break;
-                }
-            }
-        }
-
-        return unimplemented == 1 ? ifaceMethod : null;
     }
 
     private static boolean canMatch(EType type, EType other) {
@@ -207,7 +216,8 @@ public class TypeCoercions {
             if (klass.allSuperclasses().stream().anyMatch(x -> canMatch(x, other)))
                 return true;
 
-            return klass.interfaces().stream().anyMatch(x -> canMatch(x, other));
+            if (klass.interfaces().stream().anyMatch(x -> canMatch(x, other)))
+                return true;
         }
 
         return false;
@@ -241,6 +251,22 @@ public class TypeCoercions {
             };
         });
 
+        TypeCoercions.registerComplexJavaToLua(Set.class, use -> {
+            if (!use.hasAnnotation(CoerceToNative.class)) return null;
+
+            EClassUse<?> componentUse = use.typeVariableValues().get(0).upperBound();
+
+            return set -> {
+                LuaTable table = new LuaTable();
+                int i = 0;
+                for (Object o : set) {
+                    table.rawset(i + 1, toLuaValue(o, componentUse));
+                    i++;
+                }
+                return table;
+            };
+        });
+
         TypeCoercions.registerComplexJavaToLua(Map.class, use -> {
             if (!use.hasAnnotation(CoerceToNative.class)) return null;
 
@@ -251,7 +277,7 @@ public class TypeCoercions {
                 LuaTable table = new LuaTable();
 
                 for (Map.Entry<?, ?> entry : ((Map<?, ?>) map).entrySet()) {
-                    table.rawset(TypeCoercions.toLuaValue(entry.getKey(), keyUse), TypeCoercions.toLuaValue(entry.getValue(), valueUse));
+                    table.rawsetImpl(TypeCoercions.toLuaValue(entry.getKey(), keyUse), TypeCoercions.toLuaValue(entry.getValue(), valueUse));
                 }
 
                 return table;
@@ -268,9 +294,9 @@ public class TypeCoercions {
         TypeCoercions.registerLuaToJava(boolean.class, (state, val) -> suppressError(val::checkBoolean));
         TypeCoercions.registerLuaToJava(String.class, (state, val) -> suppressError(val::checkString));
 
-        TypeCoercions.registerLuaToJava(EClass.class, (state, val) -> JavaHelpers.asClass(val));
+        TypeCoercions.registerLuaToJava(EClass.class, JavaHelpers::asClass);
         TypeCoercions.registerLuaToJava(Class.class, (state, val) -> {
-            EClass<?> klass = JavaHelpers.asClass(val);
+            EClass<?> klass = JavaHelpers.asClass(state, val);
             if (klass == null) return null;
             else return klass.raw();
         });
@@ -288,6 +314,22 @@ public class TypeCoercions {
                 }
 
                 return list;
+            };
+        });
+
+        TypeCoercions.registerLuaToJava(Set.class, klass -> {
+            EClass<?> componentType = klass.typeVariableValues().get(0).upperBound();
+
+            return (state, value) -> {
+                LuaTable table = value.checkTable();
+                int length = table.length();
+                Set<Object> set = new HashSet<>(length);
+
+                for (int i = 0; i < length; i++) {
+                    set.add(TypeCoercions.toJava(state, table.rawget(i + 1), componentType));
+                }
+
+                return set;
             };
         });
 
@@ -312,12 +354,6 @@ public class TypeCoercions {
 
                 return map;
             };
-        });
-
-        TypeCoercions.registerLuaToJava(Identifier.class, (state, value) -> {
-            if (!value.isString()) return null;
-
-            return Identifier.of(value.checkString());
         });
     }
 

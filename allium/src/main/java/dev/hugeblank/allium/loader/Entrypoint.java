@@ -1,51 +1,45 @@
 package dev.hugeblank.allium.loader;
 
 import com.google.gson.*;
+import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.JsonAdapter;
-import com.google.gson.annotations.SerializedName;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @JsonAdapter(Entrypoint.Adapter.class)
 public class Entrypoint {
+    @Expose(deserialize = false)
+    private final Map<Type, String> initializers;
 
-    @SerializedName("static")
-    private final String eStatic;
-    @SerializedName("dynamic")
-    private final String eDynamic;
-    @SerializedName("preLaunch")
-    private final String ePreLaunch;
-
-    public Entrypoint( String eStatic, String eDynamic, String eMixin) {
-        this.eStatic = eStatic;
-        this.eDynamic = eDynamic;
-        this.ePreLaunch = eMixin;
+    public Entrypoint(Map<Type, String> initializers) {
+        this.initializers = initializers;
     }
 
     public boolean valid() {
-        return containsStatic() || containsDynamic();
+        return initializers.containsKey(Type.STATIC) || initializers.containsKey(Type.DYNAMIC);
     }
 
-    public boolean containsStatic() {
-        return eStatic != null;
+    public boolean has(Type t) {
+        return initializers.containsKey(t);
     }
 
-    public boolean containsDynamic() {
-        return eDynamic != null;
+    public String get(Type t) {
+        return initializers.get(t);
     }
 
-    public boolean containsPreLaunch() {
-        return ePreLaunch != null;
-    }
+    public enum Type {
+        STATIC("static"),
+        DYNAMIC("dynamic");
 
-    public String getStatic() {
-        return eStatic;
-    }
+        private final String key;
+        Type(String key) {
+            this.key = key;
+        }
 
-    public String getDynamic() {
-        return eDynamic;
-    }
-
-    public String getPreLaunch() {
-        return ePreLaunch;
+        public String getKey() {
+            return key;
+        }
     }
 
     public static class Adapter implements JsonDeserializer<Entrypoint> {
@@ -53,11 +47,13 @@ public class Entrypoint {
         @Override
         public Entrypoint deserialize(JsonElement element, java.lang.reflect.Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
             JsonObject json = element.getAsJsonObject();
-            String eStatic = json.has("static") ? json.getAsJsonPrimitive("static").getAsString() : null;
-            String eDynamic = json.has("dynamic") ? json.getAsJsonPrimitive("dynamic").getAsString() : null;
-            String eMixin = json.has("preLaunch") ? json.getAsJsonPrimitive("preLaunch").getAsString() : null;
-
-            return new Entrypoint(eStatic, eDynamic, eMixin);
+            final Map<Type, String> initializers = new HashMap<>();
+            for (Type type : Type.values()) {
+                if (json.has(type.getKey())) {
+                    initializers.put(type, json.get(type.getKey()).getAsString());
+                }
+            }
+            return new Entrypoint(initializers);
         }
     }
 }

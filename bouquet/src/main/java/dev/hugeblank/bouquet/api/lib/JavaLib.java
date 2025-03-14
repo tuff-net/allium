@@ -1,13 +1,14 @@
 package dev.hugeblank.bouquet.api.lib;
 
-import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.WrappedLuaLibrary;
+import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.loader.type.*;
 import dev.hugeblank.allium.loader.type.annotation.CoerceToNative;
 import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
+import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.util.JavaHelpers;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import org.squiddev.cobalt.*;
@@ -18,13 +19,17 @@ import java.util.List;
 public class JavaLib implements WrappedLuaLibrary {
 
     @LuaWrapped
-    public static String toYarn(String string) {
-        return Allium.MAPPINGS.getYarn(string);
+    public static String toMappings(@LuaStateArg LuaState state, String string) throws LuaError {
+        return getMappings(state).getMapped(string);
     }
 
     @LuaWrapped
-    public static @CoerceToNative List<String> fromYarn(String string) {
-        return Allium.MAPPINGS.getIntermediary(string);
+    public static @CoerceToNative List<String> fromMappings(@LuaStateArg LuaState state, String string) throws LuaError {
+        return getMappings(state).getUnmapped(string);
+    }
+
+    private static Mappings getMappings(LuaState state) throws LuaError {
+        return ScriptRegistry.scriptFromState(state).getMappings();
     }
 
     @LuaWrapped
@@ -47,10 +52,10 @@ public class JavaLib implements WrappedLuaLibrary {
     }
 
     @LuaWrapped
-    public static boolean exists(String string, @OptionalArg Class<?>[] value) {
+    public static boolean exists(@LuaStateArg LuaState state, String string, @OptionalArg Class<?>[] value) {
         try {
             var parts = string.split("#");
-            var clazz = getRawClass(parts[0]);
+            var clazz = getRawClass(state, parts[0]);
 
             if (parts.length != 2) {
                 return true;
@@ -78,8 +83,8 @@ public class JavaLib implements WrappedLuaLibrary {
     }
 
     @LuaWrapped
-    public static EClass<?> getRawClass(String className) throws LuaError {
-        return JavaHelpers.getRawClass(className);
+    public static EClass<?> getRawClass(@LuaStateArg LuaState state, String className) throws LuaError {
+        return JavaHelpers.getRawClass(state, className);
 
     }
 

@@ -1,83 +1,55 @@
 package dev.hugeblank.allium.util;
 
-import dev.hugeblank.allium.Allium;
+import dev.hugeblank.allium.loader.ScriptRegistry;
+import dev.hugeblank.allium.loader.type.AlliumUserdata;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
-import org.squiddev.cobalt.Constants;
-import org.squiddev.cobalt.LuaError;
-import org.squiddev.cobalt.LuaValue;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import org.squiddev.cobalt.*;
 
 public class JavaHelpers {
-    private static final Map<String, String> CACHED_AUTO_COMPLETE = new HashMap<>();
 
-    public static EClass<?> getRawClass(String className) throws LuaError {
-        var cachedClassName = CACHED_AUTO_COMPLETE.get(className);
 
-        if (cachedClassName != null) { // Cached
+    public static <T> T checkUserdata(LuaValue value, Class<T> clazz) throws LuaError {
+        if (value instanceof AlliumUserdata<?> userdata) {
             try {
-                return EClass.fromJava(Class.forName(cachedClassName));
+                return userdata.toUserdata(clazz);
+            } catch (Exception e) {
+                throw new LuaError(e);
+            }
+        }
+        throw new LuaError("value " + value + " is not an instance of AlliumUserData");
+    }
+
+    public static EClass<?> getRawClass(LuaState state, String className) throws LuaError {
+            try {
+                className = ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(className).get(0);
+                return EClass.fromJava(Class.forName(className));
             } catch (ClassNotFoundException ignored) {}
-        }
-        try { // Intermediary
-            cachedClassName = Allium.MAPPINGS.getIntermediary(className).get(0);
-            var clazz = EClass.fromJava(Class.forName(cachedClassName));
-            CACHED_AUTO_COMPLETE.put(className, cachedClassName);
-            return clazz;
-        } catch (ClassNotFoundException ignored) {}
 
-        try { // Named
-            var clazz = EClass.fromJava(Class.forName(className));
-            CACHED_AUTO_COMPLETE.put(className, className);
-            return clazz;
-        } catch (ClassNotFoundException ignored) {}
+            try {
+                return EClass.fromJava(Class.forName(className));
+            } catch (ClassNotFoundException ignored) {}
 
         throw new LuaError("Couldn't find class \"" + className + "\"");
-
     }
 
-    public static String getRawClassName(String className) throws LuaError {
-        var cachedClassName = CACHED_AUTO_COMPLETE.get(className);
-
-        if (cachedClassName != null) {
-            return cachedClassName;
-        }
-
-        cachedClassName = Allium.MAPPINGS.getIntermediary(className).get(0);
-        if (cachedClassName != null) {
-            CACHED_AUTO_COMPLETE.put(className, cachedClassName);
-            return cachedClassName;
-        }
-        
-        throw new LuaError("Couldn't find class \"" + className + "\"");
-
-    }
-
-    @SuppressWarnings("unchecked")
-    public static EClass<?> asClass(LuaValue value) throws LuaError {
+    public static EClass<?> asClass(LuaState state, LuaValue value) throws LuaError {
         if (value.isString()) {
-            return getRawClass(value.checkString());
+            return getRawClass(state, value.checkString());
         } else if (value.isNil()) {
             return null;
-        } else if (value.type() == Constants.TTABLE && value.checkTable().rawget("allium_java_class") != Constants.NIL) {
-            return value.checkTable().rawget("allium_java_class").checkUserdata(EClass.class);
-        } else {
-            try {
-                return value.checkUserdata(EClass.class);
-            } catch (LuaError ignored) {}
-            try {
-                return EClass.fromJava(value.checkUserdata(Class.class));
-            } catch (LuaError ignored) {}
-            try {
-                return EClass.fromJava(value.checkUserdata().getClass());
-            } catch (LuaError ignored) {}
+        } else if (value instanceof LuaTable table && table.rawget("allium_java_class") instanceof AlliumUserdata<?> userdata) {
+            return userdata.toUserdata(EClass.class);
+        } else if (value instanceof AlliumUserdata<?> userdata) {
+            if (userdata.instanceOf(EClass.class)) {
+                return userdata.toUserdata(EClass.class);
+            } else if (userdata.instanceOf(Class.class)) {
+                //noinspection unchecked
+                return EClass.fromJava(userdata.toUserdata(Class.class));
+            }
+            return EClass.fromJava(userdata.toUserdata().getClass());
         }
-
 
         throw new LuaError(new ClassNotFoundException());
     }
-
 
 }

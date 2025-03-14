@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "name": "Hangman",
   "entrypoints": {
-    "main":"main.lua"
-  }
+    "static":"main.lua"
+  },
+  "mappings": "yarn"
 }
