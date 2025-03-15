@@ -39,6 +39,10 @@ public class VisitedClass {
         VISITED.put(mappedClassName, this);
     }
 
+    public Type getType() {
+        return Type.getType("L"+className+";");
+    }
+
     public boolean containsMethod(String name) {
         return visitedMethods.containsKey(name);
     }
@@ -65,13 +69,11 @@ public class VisitedClass {
 
     private void addVisitedField(LuaState state, int access, String name, String descriptor, String signature, Object value) throws LuaError {
         String[] mapped = ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asMethod(className, name)).split("#");
-        VisitedField visitedField = new VisitedField(this, access, name, descriptor, signature, value);
-        visitedFields.put(mapped[1], visitedField);
+        visitedFields.put(mapped[1], new VisitedField(this, access, name, descriptor, signature, value));
     }
 
     private void addVisitedMethod(LuaState state, int access, String name, String descriptor, String signature, String[] exceptions) throws LuaError {
         String[] mapped = ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asMethod(className, name)).split("#");
-        VisitedMethod visitedMethod = new VisitedMethod(this, access, name, descriptor, signature, exceptions);
         String key = mapped[1];
         StringBuilder mappedDescriptor = new StringBuilder("(");
         for (Type arg : Type.getArgumentTypes(descriptor)) {
@@ -82,7 +84,7 @@ public class VisitedClass {
         if (!name.equals("<init>") && !name.equals("<clinit>")) {
             key = key+mappedDescriptor;
         }
-        visitedMethods.put(key, visitedMethod);
+        visitedMethods.put(key, new VisitedMethod(this, access, name, descriptor, signature, exceptions));
     }
 
     private void mapTypeArg(LuaState state, StringBuilder mappedDescriptor, Type arg) throws LuaError {

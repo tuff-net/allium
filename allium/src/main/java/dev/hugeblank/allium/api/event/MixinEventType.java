@@ -8,6 +8,7 @@ import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import net.minecraft.util.Identifier;
 import org.squiddev.cobalt.*;
+import org.squiddev.cobalt.function.Dispatch;
 import org.squiddev.cobalt.function.LuaFunction;
 
 import java.util.ArrayList;
@@ -82,7 +83,8 @@ public class MixinEventType {
         }
         
         public void handle(Varargs args) throws UnwindThrowable, LuaError {
-            handler.invoke(script.getExecutor().getState(), args);
+            LuaState state = script.getExecutor().getState();
+            synchronized (state) { Dispatch.invoke(state, handler, args); }
         }
 
         @Override
@@ -97,8 +99,6 @@ public class MixinEventType {
 
     @Override
     public String toString() {
-        return "MixinEventType{" +
-                "id=" + id +
-                '}';
+        return "MixinEventType{" + "id=" + id + '}';
     }
 }

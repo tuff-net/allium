@@ -8,7 +8,14 @@ import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.mappings.Mappings;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.FileVisitor;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -76,5 +83,45 @@ public class SetupHelpers {
             builder.append("\n");
         });
         Allium.LOGGER.info(builder.substring(0, builder.length()-1));
+    }
+
+    public static void initializeDirectories() {
+        try {
+            if (!Files.exists(FileHelper.PERSISTENCE_DIR)) Files.createDirectory(FileHelper.PERSISTENCE_DIR);
+            if (!Files.exists(FileHelper.CONFIG_DIR)) Files.createDirectory(FileHelper.CONFIG_DIR);
+        } catch (IOException e) {
+            throw new RuntimeException("Couldn't create config directory", e);
+        }
+
+        if (Allium.DEVELOPMENT) {
+            try {
+                if (Files.isDirectory(Allium.DUMP_DIRECTORY))
+                    Files.walkFileTree(Allium.DUMP_DIRECTORY, new FileVisitor<>() {
+                        @Override
+                        public @NotNull FileVisitResult preVisitDirectory(Path dir, @NotNull BasicFileAttributes attrs) {
+                            return FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public @NotNull FileVisitResult visitFile(Path file, @NotNull BasicFileAttributes attrs) throws IOException {
+                            Files.delete(file);
+                            return FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public @NotNull FileVisitResult visitFileFailed(Path file, @NotNull IOException exc) throws IOException {
+                            throw exc;
+                        }
+
+                        @Override
+                        public @NotNull FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                            Files.delete(dir);
+                            return FileVisitResult.CONTINUE;
+                        }
+                    });
+            } catch (IOException e) {
+                throw new RuntimeException("Couldn't delete dump directory", e);
+            }
+        }
     }
 }

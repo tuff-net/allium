@@ -7,6 +7,8 @@ import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.InvalidMixinException;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
+import dev.hugeblank.allium.util.JavaHelpers;
+import dev.hugeblank.allium.util.MixinConfigUtil;
 import dev.hugeblank.allium.util.Registry;
 import dev.hugeblank.allium.util.asm.*;
 import dev.hugeblank.allium.util.asm.AsmUtil;
@@ -25,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
 import org.squiddev.cobalt.LuaTable;
+import org.squiddev.cobalt.LuaThread;
 
 import java.util.*;
 
@@ -48,7 +51,7 @@ public class MixinClassBuilder {
     private final MixinAnnotator annotator;
 
     public MixinClassBuilder(LuaState state, String target, boolean asInterface, Script script) throws LuaError {
-        if (AlliumPreLaunch.isComplete()) throw new IllegalStateException("Mixin cannot be created outside of preLaunch phase.");
+        if (MixinConfigUtil.isComplete()) throw new IllegalStateException("Mixin cannot be created outside of preLaunch phase.");
         this.script = script;
         this.asInterface = asInterface;
         this.visitedClass = VisitedClass.ofClass(state, target);
@@ -73,7 +76,6 @@ public class MixinClassBuilder {
 
     @LuaWrapped
     public MixinEventType inject(String eventName, LuaTable annotations) throws LuaError, InvalidMixinException, InvalidArgumentException {
-        // TODO: LocalCapture
         if (asInterface) throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
         return writeInject(eventName, annotations, EClass.fromJava(Inject.class));
     }
@@ -163,12 +165,13 @@ public class MixinClassBuilder {
                             mappedName.substring(1), // Rest of name
                     List.of(Type.getArgumentTypes(visitedMethod.descriptor())),
                     Type.getReturnType(visitedMethod.descriptor()),
-                    ((visitedMethod.access() & ACC_STATIC) != 0) ? List.of((visitor, desc, offset) -> {
+                    ((visitedMethod.access() & ACC_STATIC) != 0) ? (visitor, desc, offset) -> {
                         AsmUtil.visitObjectDefinition(visitor, Type.getInternalName(AssertionError.class), "()V").run();
                         visitor.visitInsn(ATHROW);
                         visitor.visitMaxs(0,0);
-                    }) : List.of(),
-                    (methodVisitor) -> annotator.annotateMethod(script.getExecutor().getState(), annotations, methodVisitor, EClass.fromJava(Invoker.class))
+                    } : null,
+                    annotations,
+                    EClass.fromJava(Invoker.class)
             );
         }
     }
@@ -179,22 +182,28 @@ public class MixinClassBuilder {
             VisitedField visitedField = visitedClass.getField(fieldName);
             Type visitedFieldType = Type.getType(visitedField.descriptor());
             String mappedName = visitedField.mappedName();
+            mappedName = (isSetter ? "set" : "get") + // set or get
+                    mappedName.substring(0, 1).toUpperCase(Locale.getDefault()) + // Uppercase first letter
+                    mappedName.substring(1);
             this.writeMethod(
                     visitedField,
-                    ((visitedField.access() & ACC_STATIC) != 0) ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
-                    (isSetter ? "set" : "get") + // set or get
-                            mappedName.substring(0, 1).toUpperCase(Locale.getDefault()) + // Uppercase first letter
-                            mappedName.substring(1), // Rest of name
+                    visitedField.isStatic() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
+                    mappedName, // Rest of name
                     isSetter ? List.of(visitedFieldType) : List.of(),
                     isSetter ? Type.VOID_TYPE : visitedFieldType,
-                    ((visitedField.access() & ACC_STATIC) != 0) ? List.of((visitor, desc, offset) -> {
-                        AsmUtil.visitObjectDefinition(visitor, Type.getInternalName(UnsupportedOperationException.class), "()V").run();
-                        visitor.visitInsn(ATHROW);
-                        visitor.visitMaxs(0,0);
-                    }) : List.of(),
-                    (methodVisitor) -> annotator.annotateMethod(script.getExecutor().getState(), annotations, methodVisitor, EClass.fromJava(Accessor.class))
+                    visitedField.isStatic() ? createAccessorWriteFactory() : null,
+                    annotations,
+                    EClass.fromJava(Accessor.class)
             );
         }
+    }
+
+    private MethodWriteFactory createAccessorWriteFactory() {
+        return (visitor, desc, offset) -> {
+            AsmUtil.visitObjectDefinition(visitor, Type.getInternalName(UnsupportedOperationException.class), "()V").run();
+            visitor.visitInsn(ATHROW);
+            visitor.visitMaxs(0,0);
+        };
     }
 
     private String getTargetValue(LuaTable annotations) throws InvalidMixinException, LuaError, InvalidArgumentException {
@@ -220,11 +229,14 @@ public class MixinClassBuilder {
         String descriptor = annotations.rawget("method").checkString();
         if (visitedClass.containsMethod(descriptor)) {
             VisitedMethod visitedMethod = visitedClass.getMethod(descriptor);
-            List<Type> params = new ArrayList<>(List.of(Type.getArgumentTypes(visitedMethod.descriptor())));
-            params.add(Type.getType(CallbackInfo.class));
+            List<Type> params = visitedMethod.getMixinParams();
             List<Type> locals = new ArrayList<>(params);
             if ((visitedMethod.access() & ACC_STATIC) == 0) {
-                locals.add(0, Type.getType("L"+visitedClass.name()+";"));
+                locals.add(0, visitedClass.getType());
+            }
+            if (clazz.raw().equals(Inject.class)) {
+                // TODO: LocalCapture
+
             }
 
             this.writeMethod(
@@ -237,47 +249,9 @@ public class MixinClassBuilder {
                             methodIndex++,
                     params,
                     Type.VOID_TYPE,
-                    List.of((methodVisitor, desc, thisVarOffset) -> {
-                        // descriptor +1 for CallbackInfo
-                        int varPrefix = (Type.getArgumentsAndReturnSizes(visitedMethod.descriptor()) >> 2)+1;
-                        AsmUtil.createArray(methodVisitor, varPrefix, locals, Object.class, (visitor, index, arg) -> {
-                            visitor.visitVarInsn(ALOAD, index); // <- 2
-                            AsmUtil.wrapPrimitive(visitor, arg); // <- 2 | -> 2 (sometimes)
-                            if (index == 0) {
-                                visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(Object.class)); // <- 2 | -> 2
-                            }
-                            //visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(Object.class)); // <- 2 | -> 2
-                        }); // <- 0
-                        loadMap(methodVisitor::visitFieldInsn); // <- 1
-                        Runnable identifier = AsmUtil.visitObjectDefinition(
-                                methodVisitor,
-                                Type.getInternalName(Identifier.class),
-                                Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(String.class))
-                        ); // <- 2, 3
-                        methodVisitor.visitLdcInsn(script.getID()+":"+eventName); // <- 4
-                        identifier.run(); // -> 3, 4
-                        //methodVisitor.visitTypeInsn(CHECKCAST, Type.getInternalName(Object.class)); // <- 2 | -> 2
-                        methodVisitor.visitMethodInsn(
-                                INVOKEINTERFACE,
-                                Type.getInternalName(Map.class),
-                                "get",
-                                Type.getMethodDescriptor(Type.getType(Object.class), Type.getType(Object.class)),
-                                true
-                        ); // -> 1, 2 | <- 1
-                        methodVisitor.visitTypeInsn(CHECKCAST, Type.getInternalName(MixinEventType.class)); // <- 1 | -> 1
-                        methodVisitor.visitInsn(SWAP); // 0 <-> 1
-                        methodVisitor.visitMethodInsn(
-                                INVOKEVIRTUAL,
-                                Type.getInternalName(MixinEventType.class),
-                                "invoke",
-                                Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(Object[].class)),
-                                false
-                        ); // -> 0, 1
-
-                        methodVisitor.visitInsn(RETURN);
-                        methodVisitor.visitMaxs(0, 0);
-                    }),
-                    (methodVisitor) -> annotator.annotateMethod(script.getExecutor().getState(), annotations, methodVisitor, clazz)
+                    createInjectWriteFactory(eventName, visitedMethod, locals),
+                    annotations,
+                    clazz
             );
 
             List<String> paramNames = new ArrayList<>();
@@ -289,14 +263,56 @@ public class MixinClassBuilder {
         }
     }
 
+    private MethodWriteFactory createInjectWriteFactory(String eventName, VisitedMethod visitedMethod, List<Type> locals) {
+        return (methodVisitor, desc, thisVarOffset) -> {
+            // descriptor +1 for CallbackInfo
+            int varPrefix = (Type.getArgumentsAndReturnSizes(visitedMethod.descriptor()) >> 2)+1;
+            AsmUtil.createArray(methodVisitor, varPrefix, locals, Object.class, (visitor, index, arg) -> {
+                visitor.visitVarInsn(ALOAD, index); // <- 2
+                AsmUtil.wrapPrimitive(visitor, arg); // <- 2 | -> 2 (sometimes)
+                if (index == 0) {
+                    visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(Object.class)); // <- 2 | -> 2
+                }
+            }); // <- 0
+            loadMap(methodVisitor::visitFieldInsn); // <- 1
+            Runnable identifier = AsmUtil.visitObjectDefinition(
+                    methodVisitor,
+                    Type.getInternalName(Identifier.class),
+                    Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(String.class))
+            ); // <- 2, 3
+            methodVisitor.visitLdcInsn(script.getID()+":"+eventName); // <- 4
+            identifier.run(); // -> 3, 4
+            methodVisitor.visitMethodInsn(
+                    INVOKEINTERFACE,
+                    Type.getInternalName(Map.class),
+                    "get",
+                    Type.getMethodDescriptor(Type.getType(Object.class), Type.getType(Object.class)),
+                    true
+            ); // -> 1, 2 | <- 1
+            methodVisitor.visitTypeInsn(CHECKCAST, Type.getInternalName(MixinEventType.class)); // <- 1 | -> 1
+            methodVisitor.visitInsn(SWAP); // 0 <-> 1
+            methodVisitor.visitMethodInsn(
+                    INVOKEVIRTUAL,
+                    Type.getInternalName(MixinEventType.class),
+                    "invoke",
+                    Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(Object[].class)),
+                    false
+            ); // -> 0, 1
+
+            methodVisitor.visitInsn(RETURN);
+            methodVisitor.visitMaxs(0, 0);
+        };
+    }
+
     private void writeMethod(
             VisitedElement visitedValue,
             int accessOverride,
             String name,
             List<Type> params,
             Type returnType,
-            List<MethodWriteFactory> methodFactories,
-            AnnotationFactory annotationFactory
+            MethodWriteFactory writeFactory,
+            LuaTable annotations,
+            EClass<?> annotationClass
     ) throws LuaError, InvalidArgumentException, InvalidMixinException {
         var desc = Type.getMethodDescriptor(returnType, params.toArray(Type[]::new));
         var methodVisitor = c.visitMethod(
@@ -309,12 +325,16 @@ public class MixinClassBuilder {
         );
         int thisVarOffset = (visitedValue.access() & ACC_STATIC) != 0 ? 0 : 1;
 
-        annotationFactory.write(methodVisitor); // Apply annotations to this method
-        if (!methodFactories.isEmpty()) {
+        annotator.annotateMethod(
+                script.getExecutor().getState(),
+                annotations,
+                methodVisitor,
+                annotationClass
+        ); // Apply annotations to this method
+
+        if (writeFactory != null) {
             methodVisitor.visitCode();
-            for (MethodWriteFactory mwf : methodFactories) {
-                mwf.write(methodVisitor, desc, thisVarOffset);
-            }
+            writeFactory.write(methodVisitor, desc, thisVarOffset);
             methodVisitor.visitEnd();
         }
     }

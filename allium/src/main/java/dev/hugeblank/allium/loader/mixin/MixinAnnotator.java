@@ -11,11 +11,10 @@ import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
+import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.selectors.ITargetSelectorRemappable;
 import org.spongepowered.asm.mixin.injection.struct.MemberInfo;
 import org.spongepowered.asm.obfuscation.mapping.common.MappingMethod;
@@ -78,10 +77,7 @@ public class MixinAnnotator {
     private void visitValue(LuaState state, AnnotationVisitor visitor, boolean remap, String name, LuaValue value, EClass<?> returnType) throws LuaError, InvalidArgumentException {
         if (!value.isNil()) {
             if (remap && value instanceof LuaString) {
-                ITargetSelectorRemappable mapped = MemberInfo.parse(
-                        value.checkString(),
-                        BabysFirstSelectorContext.INSTANCE
-                );
+                ITargetSelectorRemappable mapped = MemberInfo.parse(value.checkString(), null);
                 // TODO: check if the user is targetting a field or method, then find the intermediary value with that tag (field_###/method_###)
                 // This is so incredibly messed up.
                 Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
@@ -102,7 +98,6 @@ public class MixinAnnotator {
                 }
                 mapped = mapped.remapUsing(new MappingMethod(unmappedOwner, unmappedName, unmappedDesc), true);
                 value = ValueFactory.valueOf(mapped.toString());
-                //value = ValueFactory.valueOf(mappings.get(name).apply(visitedClass,  value.checkString()).fullMixinName());
             }
             if (returnType.raw().isAnnotation()) {
                 AnnotationVisitor nextVisitor = visitor.visitAnnotation(name, returnType.raw().descriptorString());
@@ -185,6 +180,11 @@ public class MixinAnnotator {
         Matcher injectors = new Matcher("method");
         MAPPING_TYPES.put(Inject.class, injectors);
         MAPPING_TYPES.put(Redirect.class, injectors);
+        MAPPING_TYPES.put(Overwrite.class, injectors);
+        MAPPING_TYPES.put(ModifyArg.class, injectors);
+        MAPPING_TYPES.put(ModifyArgs.class, injectors);
+        MAPPING_TYPES.put(ModifyVariable.class, injectors);
+
 
         Matcher accessors = new Matcher("value");
         MAPPING_TYPES.put(Accessor.class, accessors);
