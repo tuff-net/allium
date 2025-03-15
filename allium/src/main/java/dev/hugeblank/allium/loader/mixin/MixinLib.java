@@ -3,9 +3,11 @@ package dev.hugeblank.allium.loader.mixin;
 import dev.hugeblank.allium.api.WrappedLuaLibrary;
 import dev.hugeblank.allium.api.event.MixinEventType;
 import dev.hugeblank.allium.loader.Script;
+import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import net.minecraft.util.Identifier;
 import org.squiddev.cobalt.LuaError;
+import org.squiddev.cobalt.LuaState;
 
 @LuaWrapped(name = "mixin")
 public class MixinLib implements WrappedLuaLibrary {
@@ -21,12 +23,12 @@ public class MixinLib implements WrappedLuaLibrary {
     }
 
     @LuaWrapped
-    public MixinClassBuilder asClass(String targetClass) throws LuaError {
-        return new MixinClassBuilder(targetClass, false, script);
+    public MixinClassBuilder asClass(@LuaStateArg LuaState state, String targetClass) throws LuaError {
+        return new MixinClassBuilder(state, targetClass, false, script);
     }
 
     @LuaWrapped
-    public MixinClassBuilder asInterface(String targetClass) throws LuaError {
-        return new MixinClassBuilder(targetClass, true, script);
+    public MixinClassBuilder asInterface(@LuaStateArg LuaState state, String targetClass) throws LuaError {
+        return new MixinClassBuilder(state, targetClass, true, script);
     }
 }

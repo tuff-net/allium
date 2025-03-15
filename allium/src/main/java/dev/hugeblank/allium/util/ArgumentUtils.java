@@ -6,6 +6,7 @@ import dev.hugeblank.allium.loader.type.annotation.LuaArgs;
 import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
+import dev.hugeblank.allium.mappings.Mappings;
 import me.basiqueevangelist.enhancedreflection.api.EParameter;
 import org.squiddev.cobalt.*;
 

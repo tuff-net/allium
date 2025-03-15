@@ -7,6 +7,7 @@ import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.InvalidMixinException;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
+import dev.hugeblank.allium.util.Registry;
 import dev.hugeblank.allium.util.asm.*;
 import dev.hugeblank.allium.util.asm.AsmUtil;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
@@ -22,6 +23,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.squiddev.cobalt.LuaError;
+import org.squiddev.cobalt.LuaState;
 import org.squiddev.cobalt.LuaTable;
 
 import java.util.*;
@@ -35,7 +37,7 @@ import static org.objectweb.asm.Opcodes.*;
 
 @LuaWrapped
 public class MixinClassBuilder {
-    public static final Map<String, MixinClassInfo> MIXINS = new HashMap<>();
+    public static final Registry<MixinClassInfo> MIXINS = new Registry<>();
 
     private final String className = AsmUtil.getUniqueMixinClassName();
     private final VisitedClass visitedClass;
@@ -45,11 +47,11 @@ public class MixinClassBuilder {
     private final boolean asInterface;
     private final MixinAnnotator annotator;
 
-    public MixinClassBuilder(String target, boolean asInterface, Script script) throws LuaError {
+    public MixinClassBuilder(LuaState state, String target, boolean asInterface, Script script) throws LuaError {
         if (AlliumPreLaunch.isComplete()) throw new IllegalStateException("Mixin cannot be created outside of preLaunch phase.");
         this.script = script;
         this.asInterface = asInterface;
-        this.visitedClass = VisitedClass.ofClass(target);
+        this.visitedClass = VisitedClass.ofClass(state, target);
         this.annotator = new MixinAnnotator(visitedClass);
 
         EClass<?> superClass = EClass.fromJava(Object.class);
@@ -228,7 +230,7 @@ public class MixinClassBuilder {
             this.writeMethod(
                     visitedMethod,
                     ACC_PRIVATE,
-                    script.getId() + "$" +
+                    script.getID() + "$" +
                             visitedMethod.name()
                             .replace("<", "")
                             .replace(">", "") +
@@ -252,7 +254,7 @@ public class MixinClassBuilder {
                                 Type.getInternalName(Identifier.class),
                                 Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(String.class))
                         ); // <- 2, 3
-                        methodVisitor.visitLdcInsn(script.getId()+":"+eventName); // <- 4
+                        methodVisitor.visitLdcInsn(script.getID()+":"+eventName); // <- 4
                         identifier.run(); // -> 3, 4
                         //methodVisitor.visitTypeInsn(CHECKCAST, Type.getInternalName(Object.class)); // <- 2 | -> 2
                         methodVisitor.visitMethodInsn(
@@ -280,7 +282,7 @@ public class MixinClassBuilder {
 
             List<String> paramNames = new ArrayList<>();
             locals.forEach((type) -> paramNames.add(AsmUtil.getWrappedTypeName(type)));
-            return new MixinEventType(Identifier.of(script.getId(), eventName), paramNames);
+            return new MixinEventType(Identifier.of(script.getID(), eventName), paramNames);
 
         } else {
             throw new InvalidMixinException(InvalidMixinException.Type.INVALID_DESCRIPTOR, descriptor);
@@ -325,7 +327,7 @@ public class MixinClassBuilder {
 
         // give the class back to the user for later use in the case of an interface.
         MixinClassInfo info = new MixinClassInfo(className, classBytes, asInterface);
-        MIXINS.put(className + ".class", info);
+        MIXINS.register(info);
         return info;
     }
 

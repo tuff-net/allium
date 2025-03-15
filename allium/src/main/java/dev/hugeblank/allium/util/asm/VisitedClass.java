@@ -1,15 +1,16 @@
 package dev.hugeblank.allium.util.asm;
 
-import dev.hugeblank.allium.Allium;
-import dev.hugeblank.allium.util.JavaHelpers;
-import dev.hugeblank.allium.util.Mappings;
+import dev.hugeblank.allium.loader.ScriptRegistry;
+import dev.hugeblank.allium.mappings.Mappings;
 import org.objectweb.asm.*;
 import org.spongepowered.asm.service.MixinService;
 import org.squiddev.cobalt.LuaError;
+import org.squiddev.cobalt.LuaState;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.objectweb.asm.Opcodes.ASM9;
 
@@ -62,33 +63,33 @@ public class VisitedClass {
         }
     }
 
-    private void addVisitedField(int access, String name, String descriptor, String signature, Object value) {
-        String[] mapped = Allium.MAPPINGS.getYarn(Mappings.asMethod(className, name)).split("#");
+    private void addVisitedField(LuaState state, int access, String name, String descriptor, String signature, Object value) throws LuaError {
+        String[] mapped = ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asMethod(className, name)).split("#");
         VisitedField visitedField = new VisitedField(this, access, name, descriptor, signature, value);
         visitedFields.put(mapped[1], visitedField);
     }
 
-    private void addVisitedMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-        String[] mapped = Allium.MAPPINGS.getYarn(Mappings.asMethod(className, name)).split("#");
+    private void addVisitedMethod(LuaState state, int access, String name, String descriptor, String signature, String[] exceptions) throws LuaError {
+        String[] mapped = ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asMethod(className, name)).split("#");
         VisitedMethod visitedMethod = new VisitedMethod(this, access, name, descriptor, signature, exceptions);
         String key = mapped[1];
         StringBuilder mappedDescriptor = new StringBuilder("(");
         for (Type arg : Type.getArgumentTypes(descriptor)) {
-            mapTypeArg(mappedDescriptor, arg);
+            mapTypeArg(state, mappedDescriptor, arg);
         }
         mappedDescriptor.append(")");
-        mapTypeArg(mappedDescriptor, Type.getReturnType(descriptor));
+        mapTypeArg(state, mappedDescriptor, Type.getReturnType(descriptor));
         if (!name.equals("<init>") && !name.equals("<clinit>")) {
             key = key+mappedDescriptor;
         }
         visitedMethods.put(key, visitedMethod);
     }
 
-    private void mapTypeArg(StringBuilder mappedDescriptor, Type arg) {
+    private void mapTypeArg(LuaState state, StringBuilder mappedDescriptor, Type arg) throws LuaError {
         if (arg.getSort() == Type.OBJECT) {
             mappedDescriptor
                     .append("L")
-                    .append(Allium.MAPPINGS.getYarn(arg.getInternalName()))
+                    .append(ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(arg.getInternalName()))
                     .append(";");
         } else {
             mappedDescriptor.append(arg.getInternalName());
@@ -123,10 +124,11 @@ public class VisitedClass {
         return interfaces;
     }
 
-    public static VisitedClass ofClass(String mappedClassName) throws LuaError {
+    public static VisitedClass ofClass(LuaState state, String mappedClassName) throws LuaError {
         if (!VISITED.containsKey(mappedClassName)) {
-            String unmappedName = JavaHelpers.getRawClassName(mappedClassName);
+            String unmappedName = ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(mappedClassName).get(0);
             try {
+                final AtomicReference<LuaError> err = new AtomicReference<>(null);
                 new ClassReader(MixinService.getService().getResourceAsStream(unmappedName.replace(".", "/") + ".class")).accept(
                         new ClassVisitor(ASM9) {
                             VisitedClass instance;
@@ -139,18 +141,31 @@ public class VisitedClass {
 
                             @Override
                             public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
-                                instance.addVisitedField(access, name, descriptor, signature, value);
+                                if (err.get() == null) {
+                                    try {
+                                        instance.addVisitedField(state, access, name, descriptor, signature, value);
+                                    } catch (LuaError e) {
+                                        err.set(e);
+                                    }
+                                }
                                 return super.visitField(access, name, descriptor, signature, value);
                             }
 
                             @Override
                             public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                                instance.addVisitedMethod(access, name, descriptor, signature, exceptions);
+                                if (err.get() == null) {
+                                    try {
+                                        instance.addVisitedMethod(state, access, name, descriptor, signature, exceptions);
+                                    } catch (LuaError e) {
+                                        err.set(e);
+                                    }
+                                }
                                 return super.visitMethod(access, name, descriptor, signature, exceptions);
                             }
                         },
                         ClassReader.SKIP_FRAMES
                 );
+                if (err.get() != null) throw err.get();
             } catch (IOException e) {
                 throw new LuaError(new RuntimeException("Could not read target class: " + mappedClassName + " (unmapped:" + unmappedName + ")", e));
             }

@@ -1,8 +1,11 @@
 package dev.hugeblank.allium.util.asm;
 
 import dev.hugeblank.allium.Allium;
+import dev.hugeblank.allium.loader.ScriptRegistry;
 import org.objectweb.asm.*;
 import org.objectweb.asm.util.CheckClassAdapter;
+import org.squiddev.cobalt.LuaError;
+import org.squiddev.cobalt.LuaState;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -84,14 +87,14 @@ public class AsmUtil {
         );
     }
 
-    public static String mapType(Type type) {
+    public static String mapType(LuaState state, Type type) throws LuaError {
         StringBuilder builder = new StringBuilder();
         while (type.getSort() == Type.ARRAY) {
             builder.append("[");
             type = type.getElementType();
         }
         if (type.getSort() == Type.OBJECT) {
-            builder.append("L").append(Allium.MAPPINGS.getYarn(type.getInternalName())).append(";");
+            builder.append("L").append(ScriptRegistry.scriptFromState(state).getMappings().getMapped(type.getInternalName())).append(";");
         } else {
             builder.append(type.getDescriptor());
         }

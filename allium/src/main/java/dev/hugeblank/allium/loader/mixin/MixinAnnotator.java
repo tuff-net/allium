@@ -1,9 +1,9 @@
 package dev.hugeblank.allium.loader.mixin;
 
-import dev.hugeblank.allium.Allium;
+import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
-import dev.hugeblank.allium.util.Mappings;
+import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.util.asm.VisitedClass;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
@@ -84,9 +84,10 @@ public class MixinAnnotator {
                 );
                 // TODO: check if the user is targetting a field or method, then find the intermediary value with that tag (field_###/method_###)
                 // This is so incredibly messed up.
+                Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
                 String mappedOwner = mapped.getOwner() == null ? visitedClass.mappedClassName() : mapped.getOwner();
-                String unmappedOwner = mapped.getOwner() == null ? null : Allium.MAPPINGS.getIntermediary(Mappings.asClass(mappedOwner)).get(0).replace(".", "/");
-                String unmappedName = Allium.MAPPINGS.getIntermediary(Mappings.asMethod(mappedOwner, mapped.getName())).get(0);
+                String unmappedOwner = mapped.getOwner() == null ? null : mappings.getUnmapped(Mappings.asClass(mappedOwner)).get(0).replace(".", "/");
+                String unmappedName = mappings.getUnmapped(Mappings.asMethod(mappedOwner, mapped.getName())).get(0);
                 if (unmappedName != null) {
                     String[] split = unmappedName.split("#");
                     unmappedName = split.length == 2 ? split[1] : null;
@@ -95,9 +96,9 @@ public class MixinAnnotator {
                 if (mapped.getDesc() == null) {
                     unmappedDesc = null;
                 } else if (mapped.getDesc().startsWith("(")) {
-                    unmappedDesc = unmapMethodDescriptor(mapped.getDesc());
+                    unmappedDesc = unmapMethodDescriptor(state, mapped.getDesc());
                 } else {
-                    unmappedDesc = unmapFieldDescriptor(mapped.getDesc());
+                    unmappedDesc = unmapFieldDescriptor(state, mapped.getDesc());
                 }
                 mapped = mapped.remapUsing(new MappingMethod(unmappedOwner, unmappedName, unmappedDesc), true);
                 value = ValueFactory.valueOf(mapped.toString());
@@ -150,30 +151,31 @@ public class MixinAnnotator {
         throw new InvalidArgumentException("Class must be an annotation");
     }
 
-    private static void unmapTypeArg(StringBuilder unmappedDescriptor, Type arg) {
+    private static void unmapTypeArg(LuaState state, StringBuilder unmappedDescriptor, Type arg) throws LuaError {
         if (arg.getSort() == Type.OBJECT) {
+            Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
             unmappedDescriptor
                     .append("L")
-                    .append(Allium.MAPPINGS.getIntermediary(Mappings.asClass(arg.getInternalName())).get(0).replace(".", "/"))
+                    .append(mappings.getUnmapped(Mappings.asClass(arg.getInternalName())).get(0).replace(".", "/"))
                     .append(";");
         } else {
             unmappedDescriptor.append(arg.getInternalName());
         }
     }
 
-    private static String unmapFieldDescriptor(String descriptor) {
+    private static String unmapFieldDescriptor(LuaState state, String descriptor) throws LuaError {
         StringBuilder builder = new StringBuilder();
-        unmapTypeArg(builder, Type.getType(descriptor));
+        unmapTypeArg(state, builder, Type.getType(descriptor));
         return builder.toString();
     }
 
-    private static String unmapMethodDescriptor(String descriptor) {
+    private static String unmapMethodDescriptor(LuaState state, String descriptor) throws LuaError {
         StringBuilder unmappedDescriptor = new StringBuilder("(");
         for (Type arg : Type.getArgumentTypes(descriptor)) {
-            unmapTypeArg(unmappedDescriptor, arg);
+            unmapTypeArg(state, unmappedDescriptor, arg);
         }
         unmappedDescriptor.append(")");
-        unmapTypeArg(unmappedDescriptor, Type.getReturnType(descriptor));
+        unmapTypeArg(state, unmappedDescriptor, Type.getReturnType(descriptor));
         return unmappedDescriptor.toString();
     }
 

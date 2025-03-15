@@ -3,10 +3,11 @@ package dev.hugeblank.allium.loader.mixin;
 import dev.hugeblank.allium.AlliumPreLaunch;
 import dev.hugeblank.allium.loader.type.StaticBinder;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
+import dev.hugeblank.allium.util.Identifiable;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import org.squiddev.cobalt.LuaValue;
 
-public class MixinClassInfo {
+public class MixinClassInfo implements Identifiable {
 
     private final String className;
     private final byte[] classBytes;
@@ -16,10 +17,6 @@ public class MixinClassInfo {
         this.className = className.replace("/", ".");
         this.classBytes = classBytes;
         this.isInterface = isInterface;
-    }
-
-    public String getClassName() {
-        return className;
     }
 
     public byte[] getBytes() {
@@ -36,5 +33,10 @@ public class MixinClassInfo {
         if (!isInterface) throw new IllegalStateException("Cannot get interface of non-interface mixin.");
         EClass<?> clazz = EClass.fromJava(Class.forName(className));
         return StaticBinder.bindClass(clazz);
+    }
+
+    @Override
+    public String getID() {
+        return className + ".class";
     }
 }

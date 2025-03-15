@@ -8,8 +8,10 @@ import com.google.gson.JsonObject;
 import dev.hugeblank.allium.loader.mixin.MixinClassBuilder;
 import dev.hugeblank.allium.util.EldritchURLStreamHandler;
 import dev.hugeblank.allium.util.FileHelper;
+import dev.hugeblank.allium.util.SetupHelpers;
 import dev.hugeblank.allium.util.asm.VisitedClass;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
+import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Mixins;
 
 import java.io.IOException;
@@ -37,22 +39,10 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
     @Override
     public void onPreLaunch() {
 
-        try {
-            if (!Files.exists(FileHelper.PERSISTENCE_DIR)) Files.createDirectory(FileHelper.PERSISTENCE_DIR);
-            if (!Files.exists(FileHelper.CONFIG_DIR)) Files.createDirectory(FileHelper.CONFIG_DIR);
-        } catch (IOException e) {
-            throw new RuntimeException("Couldn't create config directory", e);
-        }
+        initDirectories();
 
-        try {
-            if (!Files.exists(FileHelper.PERSISTENCE_DIR)) Files.createDirectory(FileHelper.PERSISTENCE_DIR);
-            if (!Files.exists(FileHelper.CONFIG_DIR)) Files.createDirectory(FileHelper.CONFIG_DIR);
-        } catch (IOException e) {
-            throw new RuntimeException("Couldn't create config directory", e);
-        }
-
-
-        // TODO collectscript here probably
+        SetupHelpers.initializeExtensions();
+        SetupHelpers.collectScripts();
 
         // Create a new mixin config
         JsonObject config = new JsonObject();
@@ -63,7 +53,8 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
         injectors.addProperty("defaultRequire", 1);
         config.add("injectors", injectors);
         JsonArray mixins = new JsonArray();
-        MixinClassBuilder.MIXINS.forEach((key, value) -> {
+        MixinClassBuilder.MIXINS.forEach((info) -> {
+            String key = info.getID();
             if (key.matches(".*mixin.*")) {
                 mixins.add(key.substring(0, key.length()-6).replace("allium/mixin/", ""));
             }
@@ -71,7 +62,7 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
         config.add("mixins", mixins);
         String configJson = (new Gson()).toJson(config);
         Map<String, byte[]> mixinConfigMap = new HashMap<>();
-        MixinClassBuilder.MIXINS.forEach((name, info) -> mixinConfigMap.put(name, info.getBytes()));
+        MixinClassBuilder.MIXINS.forEach((info) -> mixinConfigMap.put(info.getID(), info.getBytes()));
         mixinConfigMap.put(MIXIN_CONFIG_NAME, configJson.getBytes(StandardCharsets.UTF_8));
         URL mixinUrl = EldritchURLStreamHandler.create("allium-mixin", mixinConfigMap);
 
@@ -98,33 +89,39 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
         Mixins.addConfiguration(MIXIN_CONFIG_NAME);
         VisitedClass.clear();
         complete = true;
-        clearDumpDirectory();
         Mappings.LOADERS.register(new YarnLoader());
     }
 
-    private static void clearDumpDirectory() {
+    private static void initDirectories() {
+        try {
+            if (!Files.exists(FileHelper.PERSISTENCE_DIR)) Files.createDirectory(FileHelper.PERSISTENCE_DIR);
+            if (!Files.exists(FileHelper.CONFIG_DIR)) Files.createDirectory(FileHelper.CONFIG_DIR);
+        } catch (IOException e) {
+            throw new RuntimeException("Couldn't create config directory", e);
+        }
+
         if (Allium.DEVELOPMENT) {
             try {
                 if (Files.isDirectory(Allium.DUMP_DIRECTORY))
                     Files.walkFileTree(Allium.DUMP_DIRECTORY, new FileVisitor<>() {
                         @Override
-                        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        public @NotNull FileVisitResult preVisitDirectory(Path dir, @NotNull BasicFileAttributes attrs) {
                             return FileVisitResult.CONTINUE;
                         }
 
                         @Override
-                        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                        public @NotNull FileVisitResult visitFile(Path file, @NotNull BasicFileAttributes attrs) throws IOException {
                             Files.delete(file);
                             return FileVisitResult.CONTINUE;
                         }
 
                         @Override
-                        public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                        public @NotNull FileVisitResult visitFileFailed(Path file, @NotNull IOException exc) throws IOException {
                             throw exc;
                         }
 
                         @Override
-                        public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                        public @NotNull FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                             Files.delete(dir);
                             return FileVisitResult.CONTINUE;
                         }

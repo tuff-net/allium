@@ -9,9 +9,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ScriptRegistry extends Registry<Script> {
+    public static final Registry<Script.Reference> REFS;
     public static final ScriptRegistry COMMON;
     public static final ScriptRegistry CLIENT;
     public static final ScriptRegistry DEDICATED;
+    public static final ScriptRegistry MIXIN;
 
     private static final Map<LuaState, Script> SCRIPT_STATES = new HashMap<>();
 
@@ -41,13 +43,16 @@ public class ScriptRegistry extends Registry<Script> {
             case DEDICATED -> DEDICATED;
             case COMMON -> COMMON;
             case CLIENT -> CLIENT;
+            case MIXIN -> MIXIN;
         };
     }
 
     static {
+        REFS = new Registry<>();
         COMMON = new ScriptRegistry();
         CLIENT = new ScriptRegistry();
         DEDICATED = new ScriptRegistry();
+        MIXIN = new ScriptRegistry();
     }
 
 }

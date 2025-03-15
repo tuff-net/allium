@@ -37,11 +37,11 @@ public class Script implements Identifiable {
 
     protected LuaValue module;
 
-    public Script(Manifest manifest, Path path, Allium.EnvType envType) {
-        this.manifest = manifest;
-        this.path = path;
+    public Script(Reference reference, Allium.EnvType envType) {
+        this.manifest = reference.manifest();
+        this.path = reference.path();
         this.envType = envType;
-        this.executor = new ScriptExecutor(this, path, envType, manifest.entrypoints());
+        this.executor = new ScriptExecutor(this, path, manifest.entrypoints());
         this.logger = LoggerFactory.getLogger('@' + getID());
     }
 
@@ -114,7 +114,7 @@ public class Script implements Identifiable {
         }
         try {
             // Initialize and set module used by require
-            this.module = getExecutor().initialize().arg(1);
+            this.module = getExecutor().initialize(envType).arg(1);
             this.initialized.add(envType); // If all these steps are successful, we can set initialized to true
         } catch (Throwable e) {
             //noinspection StringConcatenationArgumentToLogCall
@@ -187,6 +187,14 @@ public class Script implements Identifiable {
     @Override
     public String toString() {
         return manifest.name();
+    }
+
+    public record Reference(Manifest manifest, Path path) implements Identifiable {
+
+        @Override
+        public String getID() {
+            return manifest().id();
+        }
     }
 
 }
