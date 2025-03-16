@@ -1,13 +1,12 @@
 package dev.hugeblank.allium.loader.mixin;
 
-import dev.hugeblank.allium.AlliumPreLaunch;
 import dev.hugeblank.allium.api.event.MixinEventType;
 import dev.hugeblank.allium.loader.Script;
 import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.InvalidMixinException;
+import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
-import dev.hugeblank.allium.util.JavaHelpers;
 import dev.hugeblank.allium.util.MixinConfigUtil;
 import dev.hugeblank.allium.util.Registry;
 import dev.hugeblank.allium.util.asm.*;
@@ -26,8 +25,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
+import org.squiddev.cobalt.LuaString;
 import org.squiddev.cobalt.LuaTable;
-import org.squiddev.cobalt.LuaThread;
 
 import java.util.*;
 
@@ -47,20 +46,19 @@ public class MixinClassBuilder {
     private final ClassWriter c = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
     private int methodIndex = 0;
     private final Script script;
-    private final boolean asInterface;
     private final MixinAnnotator annotator;
 
-    public MixinClassBuilder(LuaState state, String target, boolean asInterface, Script script) throws LuaError {
+    public MixinClassBuilder(String target, Script script) throws LuaError {
         if (MixinConfigUtil.isComplete()) throw new IllegalStateException("Mixin cannot be created outside of preLaunch phase.");
         this.script = script;
-        this.asInterface = asInterface;
+        LuaState state = script.getExecutor().getState();
         this.visitedClass = VisitedClass.ofClass(state, target);
-        this.annotator = new MixinAnnotator(visitedClass);
+        this.annotator = new MixinAnnotator(state, visitedClass);
 
         EClass<?> superClass = EClass.fromJava(Object.class);
         this.c.visit(
                 V17,
-                ACC_PUBLIC | (asInterface ? (ACC_INTERFACE | ACC_ABSTRACT) : 0),
+                ACC_PUBLIC | visitedClass.access(),
                 className,
                 null,
                 superClass.name().replace('.', '/'),
@@ -76,21 +74,39 @@ public class MixinClassBuilder {
 
     @LuaWrapped
     public MixinEventType inject(String eventName, LuaTable annotations) throws LuaError, InvalidMixinException, InvalidArgumentException {
-        if (asInterface) throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
-        return writeInject(eventName, annotations, EClass.fromJava(Inject.class));
+        if (visitedClass.isInterface())
+            throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
+
+        LuaAnnotation luaAnnotation = new LuaAnnotation(
+                script.getExecutor().getState(),
+                annotations,
+                visitedClass,
+                EClass.fromJava(Inject.class)
+        );
+
+        return writeInject(eventName, luaAnnotation);
     }
 
     @LuaWrapped
     public void redirect(String eventName, LuaTable annotations, @OptionalArg Boolean instanceOf) throws LuaError, InvalidMixinException, InvalidArgumentException {
-        if (asInterface) throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
+        if (visitedClass.isInterface())
+            throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
         // TODO: This doesn't actually work.
         // TODO: instanceOf mode
-        writeInject(eventName, annotations, EClass.fromJava(Redirect.class));
+
+        LuaAnnotation luaAnnotation = new LuaAnnotation(
+                script.getExecutor().getState(),
+                annotations,
+                visitedClass,
+                EClass.fromJava(Redirect.class)
+        );
+
+        writeInject(eventName, luaAnnotation);
     }
 
     // There's some disadvantages to this system. All shadowed values are made public, and forced to be modifiable.
     // Generally that's what's desired so can ya fault me for doing it this way?
-    // TODO: test
+    // TODO: Establish a way to access shadowed values. Or how about a custom injector that does what @Local does for fields?
     @LuaWrapped
     public void shadow(String target) {
         if (visitedClass.containsField(target)) {
@@ -156,24 +172,36 @@ public class MixinClassBuilder {
         String methodName = getTargetValue(annotations);
         if (visitedClass.containsMethod(methodName)) {
             VisitedMethod visitedMethod = visitedClass.getMethod(methodName);
-            String mappedName = visitedMethod.mappedName();
-            this.writeMethod(
-                    visitedMethod,
-                    ((visitedMethod.access() & ACC_STATIC) != 0) ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
-                    "invoke" +
-                            mappedName.substring(0, 1).toUpperCase(Locale.getDefault()) + // Uppercase first letter
-                            mappedName.substring(1), // Rest of name
-                    List.of(Type.getArgumentTypes(visitedMethod.descriptor())),
-                    Type.getReturnType(visitedMethod.descriptor()),
-                    ((visitedMethod.access() & ACC_STATIC) != 0) ? (visitor, desc, offset) -> {
-                        AsmUtil.visitObjectDefinition(visitor, Type.getInternalName(AssertionError.class), "()V").run();
-                        visitor.visitInsn(ATHROW);
-                        visitor.visitMaxs(0,0);
-                    } : null,
+            String mappedName = visitedMethod.mappedName(script.getExecutor().getState());
+            mappedName = "invoke" +
+                    mappedName.substring(0, 1).toUpperCase(Locale.getDefault()) + // Uppercase first letter
+                    mappedName.substring(1);// Rest of name
+
+            LuaAnnotation luaAnnotation = new LuaAnnotation(
+                    script.getExecutor().getState(),
                     annotations,
+                    visitedClass,
                     EClass.fromJava(Invoker.class)
             );
+
+            this.writeMethod(
+                    visitedMethod,
+                    visitedMethod.needsInstance() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
+                    mappedName,
+                    List.of(Type.getArgumentTypes(visitedMethod.descriptor())),
+                    Type.getReturnType(visitedMethod.descriptor()),
+                    visitedMethod.needsInstance() ? createInvokerWriteFactory() : null,
+                    luaAnnotation
+            );
         }
+    }
+
+    private MethodWriteFactory createInvokerWriteFactory() {
+        return (visitor, desc, offset) -> {
+            AsmUtil.visitObjectDefinition(visitor, Type.getInternalName(AssertionError.class), "()V").run();
+            visitor.visitInsn(ATHROW);
+            visitor.visitMaxs(0,0);
+        };
     }
 
     private void writeAccessor(boolean isSetter, LuaTable annotations) throws InvalidMixinException, LuaError, InvalidArgumentException {
@@ -181,19 +209,26 @@ public class MixinClassBuilder {
         if (visitedClass.containsField(fieldName)) {
             VisitedField visitedField = visitedClass.getField(fieldName);
             Type visitedFieldType = Type.getType(visitedField.descriptor());
-            String mappedName = visitedField.mappedName();
+            String mappedName = visitedField.mappedName(script.getExecutor().getState());
             mappedName = (isSetter ? "set" : "get") + // set or get
                     mappedName.substring(0, 1).toUpperCase(Locale.getDefault()) + // Uppercase first letter
                     mappedName.substring(1);
+
+            LuaAnnotation luaAnnotation = new LuaAnnotation(
+                    script.getExecutor().getState(),
+                    annotations,
+                    visitedClass,
+                    EClass.fromJava(Accessor.class)
+            );
+
             this.writeMethod(
                     visitedField,
-                    visitedField.isStatic() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
+                    visitedField.needsInstance() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
                     mappedName, // Rest of name
                     isSetter ? List.of(visitedFieldType) : List.of(),
                     isSetter ? Type.VOID_TYPE : visitedFieldType,
-                    visitedField.isStatic() ? createAccessorWriteFactory() : null,
-                    annotations,
-                    EClass.fromJava(Accessor.class)
+                    visitedField.needsInstance() ? createAccessorWriteFactory() : null,
+                    luaAnnotation
             );
         }
     }
@@ -207,7 +242,8 @@ public class MixinClassBuilder {
     }
 
     private String getTargetValue(LuaTable annotations) throws InvalidMixinException, LuaError, InvalidArgumentException {
-        if (!asInterface) throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "interface");
+        if (!visitedClass.isInterface())
+            throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "interface");
         String name = null;
         if (annotations.rawget("value").isString()) {
             name = annotations.rawget("value").checkString();
@@ -221,22 +257,15 @@ public class MixinClassBuilder {
         }
     }
 
-    private void loadMap(VisitFieldInsn visitMethod) {
-        visitMethod.visit(GETSTATIC, Type.getInternalName(MixinEventType.class), "EVENT_MAP", Type.getDescriptor(Map.class));
-    }
-
-    private MixinEventType writeInject(String eventName, LuaTable annotations, EClass<?> clazz) throws LuaError, InvalidMixinException, InvalidArgumentException {
-        String descriptor = annotations.rawget("method").checkString();
+    private MixinEventType writeInject(String eventName, LuaAnnotation annotation) throws LuaError, InvalidMixinException, InvalidArgumentException {
+        String descriptor = annotation.findElement("method", String.class);
         if (visitedClass.containsMethod(descriptor)) {
             VisitedMethod visitedMethod = visitedClass.getMethod(descriptor);
-            List<Type> params = visitedMethod.getMixinParams();
+            List<Type> params = visitedMethod.getParams();
+            params.add(Type.getType(CallbackInfo.class));
             List<Type> locals = new ArrayList<>(params);
             if ((visitedMethod.access() & ACC_STATIC) == 0) {
                 locals.add(0, visitedClass.getType());
-            }
-            if (clazz.raw().equals(Inject.class)) {
-                // TODO: LocalCapture
-
             }
 
             this.writeMethod(
@@ -250,8 +279,7 @@ public class MixinClassBuilder {
                     params,
                     Type.VOID_TYPE,
                     createInjectWriteFactory(eventName, visitedMethod, locals),
-                    annotations,
-                    clazz
+                    annotation
             );
 
             List<String> paramNames = new ArrayList<>();
@@ -274,7 +302,10 @@ public class MixinClassBuilder {
                     visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(Object.class)); // <- 2 | -> 2
                 }
             }); // <- 0
-            loadMap(methodVisitor::visitFieldInsn); // <- 1
+            methodVisitor.visitFieldInsn(
+                    GETSTATIC, Type.getInternalName(MixinEventType.class),
+                    "EVENT_MAP", Type.getDescriptor(Map.class)
+            ); // <- 1
             Runnable identifier = AsmUtil.visitObjectDefinition(
                     methodVisitor,
                     Type.getInternalName(Identifier.class),
@@ -311,8 +342,7 @@ public class MixinClassBuilder {
             List<Type> params,
             Type returnType,
             MethodWriteFactory writeFactory,
-            LuaTable annotations,
-            EClass<?> annotationClass
+            LuaAnnotation annotation
     ) throws LuaError, InvalidArgumentException, InvalidMixinException {
         var desc = Type.getMethodDescriptor(returnType, params.toArray(Type[]::new));
         var methodVisitor = c.visitMethod(
@@ -325,12 +355,9 @@ public class MixinClassBuilder {
         );
         int thisVarOffset = (visitedValue.access() & ACC_STATIC) != 0 ? 0 : 1;
 
-        annotator.annotateMethod(
-                script.getExecutor().getState(),
-                annotations,
-                methodVisitor,
-                annotationClass
-        ); // Apply annotations to this method
+        AnnotationVisitor annotationVisitor = annotator.attachAnnotation(methodVisitor, annotation.type().raw());
+        annotation.apply(annotationVisitor);// Apply annotations to this method
+        annotationVisitor.visitEnd();
 
         if (writeFactory != null) {
             methodVisitor.visitCode();
@@ -346,16 +373,9 @@ public class MixinClassBuilder {
         AsmUtil.dumpClass(className, classBytes);
 
         // give the class back to the user for later use in the case of an interface.
-        MixinClassInfo info = new MixinClassInfo(className, classBytes, asInterface);
+        MixinClassInfo info = new MixinClassInfo(className, classBytes, visitedClass.isInterface());
         MIXINS.register(info);
         return info;
-    }
-
-    // Abuse of functional interfaces:
-
-    @FunctionalInterface
-    private interface VisitFieldInsn {
-        void visit(int opcode, String owner, String name, String descriptor);
     }
 
     @FunctionalInterface
@@ -363,9 +383,5 @@ public class MixinClassBuilder {
         void write(MethodVisitor methodVisitor, String descriptor, int thisVarOffset) throws InvalidArgumentException, LuaError, InvalidMixinException;
     }
 
-    @FunctionalInterface
-    private interface AnnotationFactory {
-        void write(MethodVisitor methodVisitor) throws InvalidArgumentException, LuaError, InvalidMixinException;
-    }
 }
 

@@ -1,4 +1,4 @@
-package dev.hugeblank.bouquet.api.lib;
+package dev.hugeblank.allium.loader.lib;
 
 import dev.hugeblank.allium.loader.type.StaticBinder;
 import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;

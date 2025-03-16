@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.objectweb.asm.Opcodes.ACC_INTERFACE;
 import static org.objectweb.asm.Opcodes.ASM9;
 
 public class VisitedClass {
@@ -100,6 +101,10 @@ public class VisitedClass {
 
     public String mappedClassName() {
         return mappedClassName;
+    }
+
+    public boolean isInterface() {
+        return (access & ACC_INTERFACE) != 0;
     }
 
     public int version() {

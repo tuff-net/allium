@@ -23,63 +23,61 @@ import org.squiddev.cobalt.*;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 // A masterpiece
 public class MixinAnnotator {
 
-    private static final Map<Class<?>, Matcher> MAPPING_TYPES = new HashMap<>();
+    private static final Map<Class<?>, String> REMAP_KEYS = new HashMap<>();
 
     private final VisitedClass visitedClass;
+    private final LuaState state;
 
-    public MixinAnnotator(VisitedClass visitedClass) {
+    public MixinAnnotator(LuaState state, VisitedClass visitedClass) {
+        this.state = state;
         this.visitedClass = visitedClass;
     }
 
-    private void annotate(LuaState state, LuaValue value, AnnotationVisitor visitor, EClass<?> clazz) throws LuaError, InvalidArgumentException {
+    private void annotate(LuaValue value, AnnotationVisitor visitor, EClass<?> clazz) throws LuaError, InvalidArgumentException {
         LuaTable table = value.checkTable();
         for (EMethod method : clazz.methods()) {
             String name = method.name();
             LuaValue nextValue = table.rawget(name);
             EClass<?> returnType = method.rawReturnType();
-            Matcher matcher = MAPPING_TYPES.get(clazz.raw());
-            boolean remap = matcher != null && matcher.matches(name);
+            boolean remap = name.equals(REMAP_KEYS.get(clazz.raw()));
             if (!nextValue.isNil()) {
                 if (returnType.raw().isArray()) {
-                    annotateArray(state, visitor, remap, name, nextValue, returnType);
+                    annotateArray(visitor, remap, name, nextValue, returnType);
                 } else {
-                    visitValue(state, visitor, remap, name, nextValue, returnType);
+                    visitValue(visitor, remap, name, nextValue, returnType);
                 }
             } else if (name.equals("value") && !table.rawget(1).isNil()) {
                 if (returnType.raw().isArray()) {
-                    annotateArray(state, visitor, remap, name, table.rawget(1), returnType);
+                    annotateArray(visitor, remap, name, table.rawget(1), returnType);
                 } else {
-                    visitValue(state, visitor, remap, "value", table.rawget(1), returnType);
+                    visitValue(visitor, remap, "value", table.rawget(1), returnType);
                 }
             }
         }
     }
 
-    private void annotateArray(LuaState state, AnnotationVisitor visitor, boolean remap, String name, LuaValue nextValue, EClass<?> returnType) throws LuaError, InvalidArgumentException {
+    private void annotateArray(AnnotationVisitor visitor, boolean remap, String name, LuaValue nextValue, EClass<?> returnType) throws LuaError, InvalidArgumentException {
         AnnotationVisitor array = visitor.visitArray(name);
         if (nextValue instanceof LuaString || (nextValue instanceof LuaTable table && table.length() == 0)) {
-            visitValue(state, array, remap, null, nextValue, returnType.arrayComponent());
+            visitValue(array, remap, null, nextValue, returnType.arrayComponent());
         } else {
             LuaTable nextTable = nextValue.checkTable();
             for (int i = 0; i < nextTable.length(); i++) {
-                visitValue(state, array, remap, null, nextTable.rawget(i + 1), returnType.arrayComponent());
+                visitValue(array, remap, null, nextTable.rawget(i + 1), returnType.arrayComponent());
             }
         }
         array.visitEnd();
     }
 
-    private void visitValue(LuaState state, AnnotationVisitor visitor, boolean remap, String name, LuaValue value, EClass<?> returnType) throws LuaError, InvalidArgumentException {
+    private void visitValue(AnnotationVisitor visitor, boolean remap, String name, LuaValue value, EClass<?> returnType) throws LuaError, InvalidArgumentException {
         if (!value.isNil()) {
             if (remap && value instanceof LuaString) {
                 ITargetSelectorRemappable mapped = MemberInfo.parse(value.checkString(), null);
-                // TODO: check if the user is targetting a field or method, then find the intermediary value with that tag (field_###/method_###)
-                // This is so incredibly messed up.
                 Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
                 String mappedOwner = mapped.getOwner() == null ? visitedClass.mappedClassName() : mapped.getOwner();
                 String unmappedOwner = mapped.getOwner() == null ? null : mappings.getUnmapped(Mappings.asClass(mappedOwner)).get(0).replace(".", "/");
@@ -92,9 +90,9 @@ public class MixinAnnotator {
                 if (mapped.getDesc() == null) {
                     unmappedDesc = null;
                 } else if (mapped.getDesc().startsWith("(")) {
-                    unmappedDesc = unmapMethodDescriptor(state, mapped.getDesc());
+                    unmappedDesc = unmapMethodDescriptor(mapped.getDesc());
                 } else {
-                    unmappedDesc = unmapFieldDescriptor(state, mapped.getDesc());
+                    unmappedDesc = unmapFieldDescriptor(mapped.getDesc());
                 }
                 mapped = mapped.remapUsing(new MappingMethod(unmappedOwner, unmappedName, unmappedDesc), true);
                 value = ValueFactory.valueOf(mapped.toString());
@@ -104,9 +102,9 @@ public class MixinAnnotator {
                 if (value instanceof LuaString) {
                     LuaTable nextTable = new LuaTable();
                     nextTable.rawset("value", value);
-                    annotate(state, nextTable, nextVisitor, returnType);
+                    annotate(nextTable, nextVisitor, returnType);
                 } else {
-                    annotate(state, value, nextVisitor, returnType);
+                    annotate(value, nextVisitor, returnType);
                 }
                 nextVisitor.visitEnd();
             } else if (returnType.raw().isEnum()) {
@@ -136,17 +134,18 @@ public class MixinAnnotator {
         );
     }
 
-    public void annotateMethod(LuaState state, LuaTable annotationTable, MethodVisitor methodVisitor, EClass<?> annotation) throws InvalidArgumentException, LuaError {
+    public LuaAnnotation annotateMethod(LuaTable annotationTable, MethodVisitor methodVisitor, EClass<?> annotation) throws InvalidArgumentException, LuaError {
         if (annotation.raw().isAnnotation()) {
             AnnotationVisitor visitor = attachAnnotation(methodVisitor, annotation.raw());
-            annotate(state, annotationTable, visitor, annotation);
+            LuaAnnotation luaAnnotation = new LuaAnnotation(state, annotationTable, visitedClass, annotation);
+            luaAnnotation.apply(visitor);
             visitor.visitEnd();
-            return;
+            return luaAnnotation;
         }
         throw new InvalidArgumentException("Class must be an annotation");
     }
 
-    private static void unmapTypeArg(LuaState state, StringBuilder unmappedDescriptor, Type arg) throws LuaError {
+    private void unmapTypeArg(StringBuilder unmappedDescriptor, Type arg) throws LuaError {
         if (arg.getSort() == Type.OBJECT) {
             Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
             unmappedDescriptor
@@ -158,48 +157,35 @@ public class MixinAnnotator {
         }
     }
 
-    private static String unmapFieldDescriptor(LuaState state, String descriptor) throws LuaError {
+    private String unmapFieldDescriptor(String descriptor) throws LuaError {
         StringBuilder builder = new StringBuilder();
-        unmapTypeArg(state, builder, Type.getType(descriptor));
+        unmapTypeArg(builder, Type.getType(descriptor));
         return builder.toString();
     }
 
-    private static String unmapMethodDescriptor(LuaState state, String descriptor) throws LuaError {
+    private String unmapMethodDescriptor(String descriptor) throws LuaError {
         StringBuilder unmappedDescriptor = new StringBuilder("(");
         for (Type arg : Type.getArgumentTypes(descriptor)) {
-            unmapTypeArg(state, unmappedDescriptor, arg);
+            unmapTypeArg(unmappedDescriptor, arg);
         }
         unmappedDescriptor.append(")");
-        unmapTypeArg(state, unmappedDescriptor, Type.getReturnType(descriptor));
+        unmapTypeArg(unmappedDescriptor, Type.getReturnType(descriptor));
         return unmappedDescriptor.toString();
     }
 
     static {
-        MAPPING_TYPES.put(At.class, new Matcher("target"));
+        REMAP_KEYS.put(At.class, "target");
 
-        Matcher injectors = new Matcher("method");
-        MAPPING_TYPES.put(Inject.class, injectors);
-        MAPPING_TYPES.put(Redirect.class, injectors);
-        MAPPING_TYPES.put(Overwrite.class, injectors);
-        MAPPING_TYPES.put(ModifyArg.class, injectors);
-        MAPPING_TYPES.put(ModifyArgs.class, injectors);
-        MAPPING_TYPES.put(ModifyVariable.class, injectors);
+        REMAP_KEYS.put(Inject.class, "method");
+        REMAP_KEYS.put(Redirect.class, "method");
+        REMAP_KEYS.put(Overwrite.class, "method");
+        REMAP_KEYS.put(ModifyArg.class, "method");
+        REMAP_KEYS.put(ModifyArgs.class, "method");
+        REMAP_KEYS.put(ModifyVariable.class, "method");
 
 
-        Matcher accessors = new Matcher("value");
-        MAPPING_TYPES.put(Accessor.class, accessors);
-        MAPPING_TYPES.put(Invoker.class, accessors);
+        REMAP_KEYS.put(Accessor.class, "value");
+        REMAP_KEYS.put(Invoker.class, "value");
     }
 
-    private static class Matcher {
-        private final List<String> matches;
-
-        public Matcher(String... matches) {
-            this.matches = List.of(matches);
-        }
-
-        public boolean matches(String key) {
-            return matches.contains(key);
-        }
-    }
 }
