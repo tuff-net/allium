@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.hugeblank.allium.AlliumPreLaunch;
 import dev.hugeblank.allium.loader.mixin.MixinClassBuilder;
 import dev.hugeblank.allium.loader.mixin.MixinClassInfo;
 import dev.hugeblank.allium.util.asm.VisitedClass;
@@ -49,13 +50,12 @@ public class MixinConfigUtil {
                 .add("server", mixinsToJson(MixinClassBuilder.SERVER, mixinConfigMap))
                 .build();
         String configJson = (new Gson()).toJson(config);
-        System.out.println(configJson);
         mixinConfigMap.put(MIXIN_CONFIG_NAME, configJson.getBytes(StandardCharsets.UTF_8));
 
         URL mixinUrl = ByteArrayStreamHandler.create("allium-mixin", mixinConfigMap);
 
         // Stuff those files into class loader
-        ClassLoader loader = MixinConfigUtil.class.getClassLoader();
+        ClassLoader loader = AlliumPreLaunch.class.getClassLoader();
         Method addUrlMethod = null;
         for (Method method : loader.getClass().getMethods()) {
             if (method.getName().equals("addUrlFwd")) {
@@ -86,7 +86,7 @@ public class MixinConfigUtil {
             if (key.matches(".*mixin.*")) {
                 mixins.add(key.replace(MIXIN_PACKAGE + ".", "").replace(".class", ""));
             }
-            configMap.put(info.getID(), info.getBytes());
+            configMap.put(key.replace(".", "/").replace("/class", ".class"), info.getBytes());
         });
         return mixins;
     }
@@ -114,7 +114,6 @@ public class MixinConfigUtil {
             return providers.containsKey(path) ? new ByteArrayStreamConnection(url, providers.get(path)) : null;
         }
 
-        // Someone please name a game "Eldritch Connection"
         private static final class ByteArrayStreamConnection extends URLConnection {
             private final byte[] bytes;
 

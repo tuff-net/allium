@@ -1,7 +1,6 @@
 package dev.hugeblank.allium.loader;
 
 import dev.hugeblank.allium.util.Registry;
-import net.fabricmc.api.EnvType;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
 
@@ -9,9 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ScriptRegistry extends Registry<Script> {
-    public static final ScriptRegistry CLIENT;
-    public static final ScriptRegistry SERVER;
-
+    public static final ScriptRegistry INSTANCE = new ScriptRegistry();
     private static final Map<LuaState, Script> SCRIPT_STATES = new HashMap<>();
 
     public ScriptRegistry() {
@@ -35,16 +32,9 @@ public class ScriptRegistry extends Registry<Script> {
         throw new LuaError("Unregistered state!");
     }
 
-    public static ScriptRegistry getInstance(EnvType type) {
-        return switch (type) {
-            case SERVER -> SERVER;
-            case CLIENT -> CLIENT;
-        };
+    public static ScriptRegistry getInstance() {
+        return INSTANCE;
     }
 
-    static {
-        CLIENT = new ScriptRegistry();
-        SERVER = new ScriptRegistry();
-    }
 
 }

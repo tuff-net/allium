@@ -8,8 +8,7 @@ import dev.hugeblank.allium.loader.type.StaticBinder;
 import dev.hugeblank.allium.api.WrappedLuaLibrary;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.util.JavaHelpers;
-import net.fabricmc.api.EnvType;
-import org.jetbrains.annotations.Nullable;
+import net.fabricmc.loader.api.FabricLoader;
 import org.squiddev.cobalt.*;
 import org.squiddev.cobalt.debug.DebugFrame;
 import org.squiddev.cobalt.function.*;
@@ -23,20 +22,13 @@ import java.util.List;
 @LuaWrapped(name="package")
 public class PackageLib implements WrappedLuaLibrary {
     private final Script script;
-    private final EnvType envType;
-    @LuaWrapped @Nullable public final String environment;
     @LuaWrapped public final LuaTable loaders;
     @LuaWrapped public final LuaTable preload;
     @LuaWrapped public final LuaTable loaded;
     @LuaWrapped public String path;
 
-    public PackageLib(Script script, @Nullable EnvType envType) {
+    public PackageLib(Script script) {
         this.script = script;
-        this.envType = envType;
-        this.environment = envType == null ? null : switch (envType) {
-            case CLIENT -> "client";
-            case SERVER -> "server";
-        };
         this.path = "./?.lua;./?/init.lua";
         this.preload = new LuaTable();
         this.loaded = new LuaTable();
@@ -62,7 +54,7 @@ public class PackageLib implements WrappedLuaLibrary {
 
     @LuaWrapped
     public String environment() {
-        return envType == null ? null : switch (envType) {
+        return switch (FabricLoader.getInstance().getEnvironmentType()) {
             case CLIENT -> "client";
             case SERVER -> "server";
         };
@@ -94,7 +86,7 @@ public class PackageLib implements WrappedLuaLibrary {
 
     private Varargs externScriptLoader(LuaState state, DebugFrame frame, Varargs args) throws LuaError, UnwindThrowable {
         String[] path = args.arg(1).checkString().split("\\.");
-        Script candidate = ScriptRegistry.getInstance(envType).get(path[0]);
+        Script candidate = ScriptRegistry.getInstance().get(path[0]);
         if (candidate != null) {
             if (!candidate.isInitialized()) {
                 candidate.initialize();

@@ -19,8 +19,7 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
 
         EnvType envType = FabricLoader.getInstance().getEnvironmentType();
 
-        SetupHelpers.initializeExtensions(envType);
-        SetupHelpers.collectScripts(envType);
+        SetupHelpers.collectScripts();
 
         MixinConfigUtil.applyConfiguration();
     }

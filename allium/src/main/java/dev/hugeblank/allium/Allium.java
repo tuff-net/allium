@@ -11,6 +11,8 @@
 // See LICENSE for more information
 package dev.hugeblank.allium;
 
+import dev.hugeblank.allium.util.SetupHelpers;
+import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -28,6 +30,8 @@ public class Allium implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        // Crickets...
+        EnvType envType = FabricLoader.getInstance().getEnvironmentType();
+        SetupHelpers.initializeExtensions(envType);
+        SetupHelpers.initializeEnvironment();
     }
 }

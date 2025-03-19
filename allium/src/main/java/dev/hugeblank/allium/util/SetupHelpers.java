@@ -23,8 +23,8 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class SetupHelpers {
-    public static void initializeEnvironment(EnvType containerEnvType) {
-        ScriptRegistry registry = ScriptRegistry.getInstance(containerEnvType);
+    public static void initializeEnvironment() {
+        ScriptRegistry registry = ScriptRegistry.getInstance();
         registry.forEach(Script::initialize);
         Set<Script> set = registry.getAll();
         list(set, "Initialized " + set.size() + " scripts:\n",
@@ -34,7 +34,7 @@ public class SetupHelpers {
         );
     }
 
-    public static void collectScripts(EnvType envType) {
+    public static void collectScripts() {
         ImmutableSet.Builder<Script.Reference> setBuilder = ImmutableSet.builder();
         setBuilder.addAll(FileHelper.getValidDirScripts(FileHelper.getScriptsDirectory()));
         setBuilder.addAll(FileHelper.getValidModScripts());
@@ -44,7 +44,7 @@ public class SetupHelpers {
             return;
         }
 
-        ScriptRegistry registry = ScriptRegistry.getInstance(envType);
+        ScriptRegistry registry = ScriptRegistry.getInstance();
         refs.forEach((ref) -> {
             String mappingsID = ref.manifest().mappings();
             if (!Mappings.REGISTRY.has(mappingsID) && Mappings.LOADERS.has(mappingsID)) {
@@ -54,7 +54,7 @@ public class SetupHelpers {
                 refs.remove(ref);
                 return;
             }
-            registry.register(new Script(ref, envType));
+            registry.register(new Script(ref));
         });
 
         list(refs, "Found " + refs.size() + " scripts:\n",

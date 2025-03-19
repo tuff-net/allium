@@ -1,6 +1,5 @@
 package dev.hugeblank.allium.loader;
 
-import net.fabricmc.api.EnvType;
 import org.squiddev.cobalt.*;
 import org.squiddev.cobalt.compiler.CompileException;
 import org.squiddev.cobalt.compiler.LoadState;
@@ -28,6 +27,7 @@ public class ScriptExecutor extends EnvironmentManager {
     }
 
     public Varargs initialize() throws Throwable {
+        applyLibraries(script);
         if (entrypoint.has(Entrypoint.Type.STATIC) && entrypoint.has(Entrypoint.Type.DYNAMIC)) {
             Varargs out = execute(Entrypoint.Type.STATIC);
             execute(Entrypoint.Type.DYNAMIC);
@@ -44,8 +44,8 @@ public class ScriptExecutor extends EnvironmentManager {
         throw new Exception("Expected either static or dynamic entrypoint, got none");
     }
 
-    public void preInitialize(EnvType envType) throws CompileException, LuaError, IOException {
-        createEnvironment(script, envType);
+    public void preInitialize() throws CompileException, LuaError, IOException {
+        createEnvironment(script);
         if (entrypoint.has(Entrypoint.Type.MIXIN)) execute(Entrypoint.Type.MIXIN);
     }
 

@@ -1,7 +1,7 @@
 print("I'm feeling lucky!")
 
 -- We have to be VERY careful about where we register our mixins. If your mixin is client-specific,
--- make sure to specify in mixin.to, as well as checking that the package.environment is "client".
+-- make sure to specify in mixin.to(), as well as checking that the package.environment is "client".
 
 -- For registering our recipe in the right location
 local BrewingRecipeRegistryMixinBuilder = mixin.to("net.minecraft.recipe.BrewingRecipeRegistry")

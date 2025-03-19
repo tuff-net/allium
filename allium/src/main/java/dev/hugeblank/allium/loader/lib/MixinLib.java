@@ -7,7 +7,6 @@ import dev.hugeblank.allium.loader.mixin.MixinClassBuilder;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
 import net.fabricmc.api.EnvType;
-import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.Nullable;
 import org.squiddev.cobalt.LuaError;
 
@@ -15,12 +14,12 @@ import org.squiddev.cobalt.LuaError;
 public class MixinLib implements WrappedLuaLibrary {
     private final Script script;
 
-    public MixinLib(Script script, EnvType envType) {
+    public MixinLib(Script script) {
         this.script = script;
     }
 
     @LuaWrapped
-    public static MixinEventType get(Identifier eventId) {
+    public static MixinEventType get(String eventId) {
         return MixinEventType.EVENT_MAP.get(eventId);
     }
 

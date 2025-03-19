@@ -11,5 +11,5 @@ import net.fabricmc.api.EnvType;
   */
 @FunctionalInterface
 public interface LibraryInitializer {
-    WrappedLuaLibrary init(Script script, EnvType envType);
+    WrappedLuaLibrary init(Script script);
 }

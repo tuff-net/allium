@@ -12,6 +12,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class ReloadCommandMixin {
     @Inject(at = @At("HEAD"), method = "method_13530(Lcom/mojang/brigadier/context/CommandContext;)I")
     private static void executes(CommandContext<?> context, CallbackInfoReturnable<Integer> cir) {
-        ScriptRegistry.SERVER.reloadAll();
+        ScriptRegistry.getInstance().reloadAll();
     }
 }

@@ -11,7 +11,6 @@ import dev.hugeblank.allium.util.Registry;
 import dev.hugeblank.allium.util.asm.*;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import net.fabricmc.api.EnvType;
-import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.*;
 import org.spongepowered.asm.mixin.Dynamic;
@@ -95,7 +94,7 @@ public class MixinClassBuilder {
         return writeInject(eventName, luaAnnotation);
     }
 
-    @LuaWrapped
+//    @LuaWrapped
     public void redirect(String eventName, LuaTable annotations, @OptionalArg Boolean instanceOf) throws LuaError, InvalidMixinException, InvalidArgumentException {
         if (visitedClass.isInterface() || this.duck)
             throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
@@ -292,7 +291,7 @@ public class MixinClassBuilder {
 
             List<String> paramNames = new ArrayList<>();
             locals.forEach((type) -> paramNames.add(AsmUtil.getWrappedTypeName(type)));
-            return new MixinEventType(Identifier.of(script.getID(), eventName), paramNames);
+            return new MixinEventType(script.getID() + ":" + eventName, paramNames);
 
         } else {
             throw new InvalidMixinException(InvalidMixinException.Type.INVALID_DESCRIPTOR, descriptor);
@@ -314,13 +313,7 @@ public class MixinClassBuilder {
                     GETSTATIC, Type.getInternalName(MixinEventType.class),
                     "EVENT_MAP", Type.getDescriptor(Map.class)
             ); // <- 1
-            Runnable identifier = AsmUtil.visitObjectDefinition(
-                    methodVisitor,
-                    Type.getInternalName(Identifier.class),
-                    Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(String.class))
-            ); // <- 2, 3
-            methodVisitor.visitLdcInsn(script.getID()+":"+eventName); // <- 4
-            identifier.run(); // -> 3, 4
+            methodVisitor.visitLdcInsn(script.getID()+":"+eventName); // <- 2
             methodVisitor.visitMethodInsn(
                     INVOKEINTERFACE,
                     Type.getInternalName(Map.class),

@@ -31,21 +31,19 @@ public class Script implements Identifiable {
 
     private final Manifest manifest;
     private final Path path;
-    private final EnvType envType;
     private final Logger logger;
     private final ScriptExecutor executor;
     // Whether this script was able to execute (isolated by environment)
-    private final Set<EnvType> initialized = new HashSet<>();
+    private boolean initialized = false;
     // Resources are stored in a weak set so that if a resource is abandoned, it gets destroyed.
     private final Set<ScriptResource> resources = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean destroyingResources = false;
 
     protected LuaValue module;
 
-    public Script(Reference reference, EnvType envType) {
+    public Script(Reference reference) {
         this.manifest = reference.manifest();
         this.path = reference.path();
-        this.envType = envType;
         this.executor = new ScriptExecutor(this, path, manifest.entrypoints());
         this.logger = LoggerFactory.getLogger('@' + getID());
     }
@@ -117,7 +115,7 @@ public class Script implements Identifiable {
             return;
         }
         try {
-            getExecutor().preInitialize(envType);
+            getExecutor().preInitialize();
         } catch (Throwable e) {
             //noinspection StringConcatenationArgumentToLogCall
             getLogger().error("Could not pre-initialize allium script " + getID(), e);
@@ -132,7 +130,7 @@ public class Script implements Identifiable {
         try {
             // Initialize and set module used by require
             this.module = getExecutor().initialize().arg(1);
-            this.initialized.add(envType); // If all these steps are successful, we can set initialized to true
+            this.initialized = true; // If all these steps are successful, we can set initialized to true
         } catch (Throwable e) {
             //noinspection StringConcatenationArgumentToLogCall
             getLogger().error("Could not initialize allium script " + getID(), e);
@@ -141,7 +139,7 @@ public class Script implements Identifiable {
     }
 
     public boolean isInitialized() {
-        return initialized.contains(envType);
+        return initialized;
     }
 
     // return null if file isn't contained within Scripts path, or if it doesn't exist.
@@ -163,8 +161,6 @@ public class Script implements Identifiable {
     public LuaValue getModule() {
         return module;
     }
-
-    public EnvType getEnvironment() { return envType; }
 
     public Manifest getManifest() {
         return manifest;

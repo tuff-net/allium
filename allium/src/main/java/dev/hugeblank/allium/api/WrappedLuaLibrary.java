@@ -24,7 +24,7 @@ public interface WrappedLuaLibrary {
             throw new IllegalStateException("WrappedLuaLibrary must have a @LuaWrapped annotation with a name!");
 
         for (String name : wrapped.name()) {
-            LibFunction.setGlobalLibrary(state, globals, name, lib);
+            LibFunction.setGlobalLibrary(state, state.globals(), name, lib);
         }
 
         return lib;

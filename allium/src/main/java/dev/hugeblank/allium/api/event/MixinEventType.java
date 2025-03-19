@@ -6,7 +6,6 @@ import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
-import net.minecraft.util.Identifier;
 import org.squiddev.cobalt.*;
 import org.squiddev.cobalt.function.Dispatch;
 import org.squiddev.cobalt.function.LuaFunction;
@@ -18,21 +17,21 @@ import java.util.Map;
 
 @LuaWrapped
 public class MixinEventType {
-    public static final Map<Identifier, MixinEventType> EVENT_MAP = new HashMap<>();
+    public static final Map<String, MixinEventType> EVENT_MAP = new HashMap<>();
 
-    private final Identifier id;
+    private final String id;
     private final List<String> definitions;
     private final List<EClass<?>> arguments = new ArrayList<>();
     protected final List<EventHandler> handlers = new ArrayList<>();
 
     // The purity of EventType has been tainted by the existence of this class.
-    public MixinEventType(Identifier id, List<String> definitions) {
+    public MixinEventType(String id, List<String> definitions) {
         this.id = id;
         this.definitions = definitions;
         EVENT_MAP.put(id, this);
     }
 
-    private static EClass<?> forName(Identifier id, String name) {
+    private static EClass<?> forName(String id, String name) {
         try {
             // Surely this won't cause any issues in the future!
             return EClass.fromJava(Class.forName(name));
