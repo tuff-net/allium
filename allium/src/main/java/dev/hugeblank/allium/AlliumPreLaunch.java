@@ -4,6 +4,8 @@ import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.mappings.YarnLoader;
 import dev.hugeblank.allium.util.MixinConfigUtil;
 import dev.hugeblank.allium.util.SetupHelpers;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 
 public class AlliumPreLaunch implements PreLaunchEntrypoint {
@@ -15,10 +17,10 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
 
         Mappings.LOADERS.register(new YarnLoader());
 
-        SetupHelpers.initializeExtensions();
-        SetupHelpers.collectScripts();
+        EnvType envType = FabricLoader.getInstance().getEnvironmentType();
 
-        SetupHelpers.initializeEnvironment(Allium.EnvType.MIXIN);
+        SetupHelpers.initializeExtensions(envType);
+        SetupHelpers.collectScripts(envType);
 
         MixinConfigUtil.applyConfiguration();
     }

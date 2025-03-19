@@ -2,10 +2,11 @@ package dev.hugeblank.allium.loader;
 
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.LibraryInitializer;
+import dev.hugeblank.allium.api.WrappedLuaLibrary;
 import dev.hugeblank.allium.loader.lib.PackageLib;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
-import dev.hugeblank.allium.api.WrappedLuaLibrary;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
+import net.fabricmc.api.EnvType;
 import org.squiddev.cobalt.*;
 import org.squiddev.cobalt.function.LibFunction;
 import org.squiddev.cobalt.function.VarArgFunction;
@@ -24,7 +25,7 @@ public class EnvironmentManager {
         this.state = new LuaState();
     }
 
-    protected void createEnvironment(Script script, Allium.EnvType envType) {
+    protected void createEnvironment(Script script, EnvType envType) {
         LuaTable globals = state.globals();
         BaseLib.add(globals);
         try {

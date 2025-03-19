@@ -1,6 +1,7 @@
 package dev.hugeblank.allium.util;
 
 import dev.hugeblank.allium.Allium;
+import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.annotation.LuaArgs;
 import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;
@@ -66,7 +67,7 @@ public class ArgumentUtils {
         return arguments;
     }
 
-    public static String paramsToPrettyString(List<EParameter> parameters) {
+    public static String paramsToPrettyString(LuaState state, List<EParameter> parameters) throws LuaError {
         var sb = new StringBuilder();
         boolean isFirst = true;
         boolean optionalsStarted = false;
@@ -89,7 +90,7 @@ public class ArgumentUtils {
                     optionalsStarted = true;
                 }
 
-                sb.append(Allium.DEVELOPMENT ? param : Allium.MAPPINGS.getYarn(Mappings.asClass(param.rawParameterType())));
+                sb.append(Allium.DEVELOPMENT ? param : ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asClass(param.rawParameterType())));
             }
 
         }

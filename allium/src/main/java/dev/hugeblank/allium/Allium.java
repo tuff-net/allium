@@ -11,7 +11,6 @@
 // See LICENSE for more information
 package dev.hugeblank.allium;
 
-import dev.hugeblank.allium.util.SetupHelpers;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -29,23 +28,6 @@ public class Allium implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        SetupHelpers.initializeEnvironment(EnvType.COMMON);
-    }
-
-    public enum EnvType {
-        MIXIN("mixin"), // only mixin logic
-        COMMON("common"), // common & server code
-        CLIENT("client"), // client code only
-        DEDICATED("dedicated"); // server code only
-
-        private final String key;
-        EnvType(String key) {
-            this.key = key;
-        }
-
-        public String getKey() {
-            return key;
-        }
-
+        // Crickets...
     }
 }

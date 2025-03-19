@@ -4,15 +4,15 @@ import dev.hugeblank.allium.api.event.MixinEventType;
 import dev.hugeblank.allium.loader.Script;
 import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.InvalidMixinException;
-import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
 import dev.hugeblank.allium.util.MixinConfigUtil;
 import dev.hugeblank.allium.util.Registry;
 import dev.hugeblank.allium.util.asm.*;
-import dev.hugeblank.allium.util.asm.AsmUtil;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
+import net.fabricmc.api.EnvType;
 import net.minecraft.util.Identifier;
+import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.*;
 import org.spongepowered.asm.mixin.Dynamic;
 import org.spongepowered.asm.mixin.Final;
@@ -25,10 +25,12 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
-import org.squiddev.cobalt.LuaString;
 import org.squiddev.cobalt.LuaTable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.objectweb.asm.Opcodes.*;
 
@@ -40,17 +42,23 @@ import static org.objectweb.asm.Opcodes.*;
 @LuaWrapped
 public class MixinClassBuilder {
     public static final Registry<MixinClassInfo> MIXINS = new Registry<>();
+    public static final Registry<MixinClassInfo> CLIENT = new Registry<>();
+    public static final Registry<MixinClassInfo> SERVER = new Registry<>();
 
     private final String className = AsmUtil.getUniqueMixinClassName();
+    private final EnvType targetEnvironment;
+    private final boolean duck;
     private final VisitedClass visitedClass;
     private final ClassWriter c = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
     private int methodIndex = 0;
     private final Script script;
     private final MixinAnnotator annotator;
 
-    public MixinClassBuilder(String target, Script script) throws LuaError {
+    public MixinClassBuilder(String target, @Nullable EnvType targetEnvironment, boolean duck, Script script) throws LuaError {
         if (MixinConfigUtil.isComplete()) throw new IllegalStateException("Mixin cannot be created outside of preLaunch phase.");
         this.script = script;
+        this.targetEnvironment = targetEnvironment;
+        this.duck = duck;
         LuaState state = script.getExecutor().getState();
         this.visitedClass = VisitedClass.ofClass(state, target);
         this.annotator = new MixinAnnotator(state, visitedClass);
@@ -74,7 +82,7 @@ public class MixinClassBuilder {
 
     @LuaWrapped
     public MixinEventType inject(String eventName, LuaTable annotations) throws LuaError, InvalidMixinException, InvalidArgumentException {
-        if (visitedClass.isInterface())
+        if (visitedClass.isInterface() || this.duck)
             throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
 
         LuaAnnotation luaAnnotation = new LuaAnnotation(
@@ -89,7 +97,7 @@ public class MixinClassBuilder {
 
     @LuaWrapped
     public void redirect(String eventName, LuaTable annotations, @OptionalArg Boolean instanceOf) throws LuaError, InvalidMixinException, InvalidArgumentException {
-        if (visitedClass.isInterface())
+        if (visitedClass.isInterface() || this.duck)
             throw new InvalidMixinException(InvalidMixinException.Type.INVALID_CLASSTYPE, "class");
         // TODO: This doesn't actually work.
         // TODO: instanceOf mode
@@ -107,7 +115,7 @@ public class MixinClassBuilder {
     // There's some disadvantages to this system. All shadowed values are made public, and forced to be modifiable.
     // Generally that's what's desired so can ya fault me for doing it this way?
     // TODO: Establish a way to access shadowed values. Or how about a custom injector that does what @Local does for fields?
-    @LuaWrapped
+//    @LuaWrapped
     public void shadow(String target) {
         if (visitedClass.containsField(target)) {
             VisitedField visitedField = visitedClass.getField(target);
@@ -373,8 +381,13 @@ public class MixinClassBuilder {
         AsmUtil.dumpClass(className, classBytes);
 
         // give the class back to the user for later use in the case of an interface.
-        MixinClassInfo info = new MixinClassInfo(className, classBytes, visitedClass.isInterface());
-        MIXINS.register(info);
+        MixinClassInfo info = new MixinClassInfo(className, classBytes, this.duck);
+
+        Registry<MixinClassInfo> registry = (targetEnvironment == null) ? MIXINS : switch (targetEnvironment) {
+            case SERVER -> SERVER;
+            case CLIENT -> CLIENT;
+        };
+        registry.register(info);
         return info;
     }
 

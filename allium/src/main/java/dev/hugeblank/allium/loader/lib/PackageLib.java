@@ -8,6 +8,7 @@ import dev.hugeblank.allium.loader.type.StaticBinder;
 import dev.hugeblank.allium.api.WrappedLuaLibrary;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.util.JavaHelpers;
+import net.fabricmc.api.EnvType;
 import org.jetbrains.annotations.Nullable;
 import org.squiddev.cobalt.*;
 import org.squiddev.cobalt.debug.DebugFrame;
@@ -22,17 +23,20 @@ import java.util.List;
 @LuaWrapped(name="package")
 public class PackageLib implements WrappedLuaLibrary {
     private final Script script;
-    private final Allium.EnvType envType;
+    private final EnvType envType;
     @LuaWrapped @Nullable public final String environment;
     @LuaWrapped public final LuaTable loaders;
     @LuaWrapped public final LuaTable preload;
     @LuaWrapped public final LuaTable loaded;
     @LuaWrapped public String path;
 
-    public PackageLib(Script script, Allium.EnvType envType) {
+    public PackageLib(Script script, @Nullable EnvType envType) {
         this.script = script;
         this.envType = envType;
-        this.environment = envType == Allium.EnvType.COMMON ? null : envType.getKey();
+        this.environment = envType == null ? null : switch (envType) {
+            case CLIENT -> "client";
+            case SERVER -> "server";
+        };
         this.path = "./?.lua;./?/init.lua";
         this.preload = new LuaTable();
         this.loaded = new LuaTable();

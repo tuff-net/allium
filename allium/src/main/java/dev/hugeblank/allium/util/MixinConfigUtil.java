@@ -2,9 +2,11 @@ package dev.hugeblank.allium.util;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.hugeblank.allium.AlliumPreLaunch;
 import dev.hugeblank.allium.loader.mixin.MixinClassBuilder;
+import dev.hugeblank.allium.loader.mixin.MixinClassInfo;
 import dev.hugeblank.allium.util.asm.VisitedClass;
 import org.spongepowered.asm.mixin.Mixins;
 
@@ -31,21 +33,17 @@ public class MixinConfigUtil {
 
     public static void applyConfiguration() {
         // Create a new mixin config
-        JsonObject config = new JsonObject();
-        config.addProperty("required", true);
-        config.addProperty("minVersion", "0.8");
-        config.addProperty("package", "allium.mixin");
-        JsonObject injectors = new JsonObject();
-        injectors.addProperty("defaultRequire", 1);
-        config.add("injectors", injectors);
-        JsonArray mixins = new JsonArray();
-        MixinClassBuilder.MIXINS.forEach((info) -> {
-            String key = info.getID();
-            if (key.matches(".*mixin.*")) {
-                mixins.add(key.substring(0, key.length()-6).replace("allium/mixin/", ""));
-            }
-        });
-        config.add("mixins", mixins);
+
+        JsonObject config = JsonBuilder.of()
+                .add("required", true)
+                .add("minVersion", "0.8")
+                .add("package", "allium.mixin")
+                .add("injectors", JsonBuilder.of()
+                        .add("defaultRequire", 1)
+                        .build()
+                )
+                .add("mixins", mixinsToJson(MixinClassBuilder.MIXINS))
+                .build();
         String configJson = (new Gson()).toJson(config);
         Map<String, byte[]> mixinConfigMap = new HashMap<>();
         MixinClassBuilder.MIXINS.forEach((info) -> mixinConfigMap.put(info.getID(), info.getBytes()));
@@ -75,6 +73,17 @@ public class MixinConfigUtil {
         Mixins.addConfiguration(MIXIN_CONFIG_NAME);
         VisitedClass.clear();
         complete = true;
+    }
+
+    private static JsonArray mixinsToJson(Registry<MixinClassInfo> registry) {
+        JsonArray mixins = new JsonArray();
+        registry.forEach((info) -> {
+            String key = info.getID();
+            if (key.matches(".*mixin.*")) {
+                mixins.add(key.substring(0, key.length()-6).replace("allium/mixin/", ""));
+            }
+        });
+        return mixins;
     }
 
     // This class was directly inspired by Fabric-ASM. Thank you Chocohead for paving this path for me to walk down with my goofy Lua mod.
@@ -118,6 +127,38 @@ public class MixinConfigUtil {
             public void connect() {
                 throw new UnsupportedOperationException();
             }
+        }
+    }
+
+    public static class JsonBuilder {
+        private final JsonObject object = new JsonObject();
+
+        public JsonBuilder add(String key, String value) {
+            object.addProperty(key, value);
+            return this;
+        }
+
+        public JsonBuilder add(String key, Boolean value) {
+            object.addProperty(key, value);
+            return this;
+        }
+
+        public JsonBuilder add(String key, Number value) {
+            object.addProperty(key, value);
+            return this;
+        }
+
+        public JsonBuilder add(String key, JsonElement value) {
+            object.add(key, value);
+            return this;
+        }
+
+        public JsonObject build() {
+            return object;
+        }
+
+        public static JsonBuilder of() {
+            return new JsonBuilder();
         }
     }
 }

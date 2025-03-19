@@ -11,6 +11,8 @@ local Registries = require("net.minecraft.registry.Registries")
 
 local renderText -- The text to be shared between the render event and tick event
 
+print(events)
+
 events.client.GUI_RENDER_TAIL:register(script, function(client, context, hud)
     if renderText then -- If there's text, then draw it at the top center
         context:drawCenteredTextWithShadow(hud:getTextRenderer(), renderText, context:getScaledWindowWidth()/2, 5, 0xffffff)

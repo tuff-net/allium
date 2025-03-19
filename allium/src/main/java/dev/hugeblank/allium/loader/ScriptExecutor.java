@@ -1,7 +1,10 @@
 package dev.hugeblank.allium.loader;
 
-import dev.hugeblank.allium.Allium;
-import org.squiddev.cobalt.*;
+import net.fabricmc.api.EnvType;
+import org.squiddev.cobalt.LuaError;
+import org.squiddev.cobalt.LuaState;
+import org.squiddev.cobalt.LuaThread;
+import org.squiddev.cobalt.Varargs;
 import org.squiddev.cobalt.compiler.CompileException;
 import org.squiddev.cobalt.compiler.LoadState;
 import org.squiddev.cobalt.function.LuaFunction;
@@ -27,12 +30,8 @@ public class ScriptExecutor extends EnvironmentManager {
         return state;
     }
 
-    public Varargs initialize(Allium.EnvType envType) throws Throwable {
+    public Varargs initialize(EnvType envType) throws Throwable {
         createEnvironment(script, envType);
-        if (envType == Allium.EnvType.MIXIN) {
-            if (entrypoint.has(Entrypoint.Type.STATIC)) execute(Entrypoint.Type.STATIC, script.getID() + ":mixin");
-            return null;
-        }
         if (entrypoint.has(Entrypoint.Type.STATIC) && entrypoint.has(Entrypoint.Type.DYNAMIC)) {
             Varargs out = execute(Entrypoint.Type.STATIC, script.getID() + ":static");
             execute(Entrypoint.Type.DYNAMIC, script.getID() + ":dynamic");
@@ -44,6 +43,10 @@ public class ScriptExecutor extends EnvironmentManager {
         }
         // This should be caught sooner, but who knows maybe a dev (hugeblank) will come along and mess something up
         throw new Exception("Expected either static or dynamic entrypoint, got none");
+    }
+
+    public void preInitialize() {
+
     }
 
 

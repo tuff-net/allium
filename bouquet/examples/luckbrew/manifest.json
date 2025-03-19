@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "name": "Lucky Brew",
   "entrypoints": {
-    "preLaunch":"mixin.lua",
-    "main":"main.lua"
-  }
+    "mixin":"mixin.lua",
+    "static":"main.lua"
+  },
+  "mappings": "yarn"
 }

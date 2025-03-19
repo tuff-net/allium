@@ -5,6 +5,7 @@ import dev.hugeblank.allium.api.ScriptResource;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.util.Identifiable;
+import net.fabricmc.api.EnvType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.squiddev.cobalt.LuaError;
@@ -19,25 +20,28 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 @LuaWrapped()
 public class Script implements Identifiable {
 
     private final Manifest manifest;
     private final Path path;
-    private final Allium.EnvType envType;
+    private final EnvType envType;
     private final Logger logger;
     private final ScriptExecutor executor;
     // Whether this script was able to execute (isolated by environment)
-    private final Set<Allium.EnvType> initialized = new HashSet<>();
+    private final Set<EnvType> initialized = new HashSet<>();
     // Resources are stored in a weak set so that if a resource is abandoned, it gets destroyed.
     private final Set<ScriptResource> resources = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean destroyingResources = false;
 
     protected LuaValue module;
 
-    public Script(Reference reference, Allium.EnvType envType) {
+    public Script(Reference reference, EnvType envType) {
         this.manifest = reference.manifest();
         this.path = reference.path();
         this.envType = envType;
@@ -45,7 +49,6 @@ public class Script implements Identifiable {
         this.logger = LoggerFactory.getLogger('@' + getID());
     }
 
-    // TODO: Move to Bouquet
     public void reload() {
         destroyAllResources();
         try {
@@ -147,7 +150,7 @@ public class Script implements Identifiable {
         return module;
     }
 
-    public Allium.EnvType getEnvironment() { return envType; }
+    public EnvType getEnvironment() { return envType; }
 
     public Manifest getManifest() {
         return manifest;

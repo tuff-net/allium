@@ -1,21 +1,27 @@
 print("I'm feeling lucky!")
 
-local brewingRecipeRegistryMixinBuilder = mixin.asClass("net.minecraft.recipe.BrewingRecipeRegistry") -- For use later
-local brewingRecipeRegistryInvokerBuilder = mixin.asInterface("net.minecraft.recipe.BrewingRecipeRegistry") -- And create an interface mixin for an invoker
+-- We have to be VERY careful about where we register our mixins. If your mixin is client-specific,
+-- make sure to specify in mixin.to, as well as checking that the package.environment is "client".
 
--- define that invoker. As an exercise for the reader, create and find different uses for the other private methods in this class.
-brewingRecipeRegistryInvokerBuilder:invoker({"registerPotionRecipe(Lnet/minecraft/potion/Potion;Lnet/minecraft/item/Item;Lnet/minecraft/potion/Potion;)V"})
-local brewingRecipeRegistryInvokerHolder = brewingRecipeRegistryInvokerBuilder:build() -- build interface mixin first
+local Items, Potions
 
-brewingRecipeRegistryMixinBuilder -- Get the point at which potions should be registered.
-        :inject("add_brewing_recipes", { at = "TAIL", method = "registerDefaults()V" })
-        :register(script, function(ci)
-            -- get the interface from the holder
-            local brewingRecipeRegistryInvoker = brewingRecipeRegistryInvokerHolder:getInterface()
-            local Items = java.import("Items") -- import classes here to not cause nasty crashes.
-            local Potions = java.import("Potions")
-
-            brewingRecipeRegistryInvoker.invokeRegisterPotionRecipe(Potions.AWKWARD, Items.GOLD_NUGGET, Potions.LUCK) -- Register our lucky little potion
+-- For registering our recipe in the right location
+local BrewingRecipeRegistryMixinBuilder = mixin.to("net.minecraft.recipe.BrewingRecipeRegistry")
+BrewingRecipeRegistryMixinBuilder
+        :inject("add_brewing_recipes", { -- Get the point at which potions should be registered.
+            at = "TAIL",
+            method = "registerDefaults(Lnet/minecraft/recipe/BrewingRecipeRegistry$Builder;)V"
+        })
+        -- Inject returns an event type for us to register to. We could also get this anywhere else in our code using:
+        -- `mixin.get(Identifier.of("lucky_brew:add_brewing_recipes"))`.
+        :register(script, function(builder, ci)
+            if (not Items) then
+                -- import classes here to not cause nasty crashes.
+                Items = require("net.minecraft.item.Items")
+                Potions = require("net.minecraft.potion.Potions")
+            end
+            -- Register our lucky little potion
+            builder:registerPotionRecipe(Potions.AWKWARD, Items.GOLD_NUGGET, Potions.LUCK)
         end)
 
-brewingRecipeRegistryMixinBuilder:build() -- Build the injecting mixin.
+BrewingRecipeRegistryMixinBuilder:build()
