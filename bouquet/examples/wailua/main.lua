@@ -3,15 +3,13 @@
 -- WAILA-like (What Am I Looking At) script exclusively for the client-side.
 -- This is a demonstration of how allium is not just for server sided use cases.
 
-if package.environment ~= "client" then return end
+if package.environment() ~= "client" then return end
 
 local Text = require("net.minecraft.text.Text")
 local BlockPos = require("net.minecraft.util.math.BlockPos")
 local Registries = require("net.minecraft.registry.Registries")
 
 local renderText -- The text to be shared between the render event and tick event
-
-print(events)
 
 events.client.GUI_RENDER_TAIL:register(script, function(client, context, hud)
     if renderText then -- If there's text, then draw it at the top center

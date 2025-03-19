@@ -60,6 +60,8 @@ public class SetupHelpers {
         list(refs, "Found " + refs.size() + " scripts:\n",
                 (strBuilder, ref) -> strBuilder.append(ref.manifest().id())
         );
+
+        registry.forEach(Script::preInitialize);
     }
 
     public static void initializeExtensions(EnvType envType) {

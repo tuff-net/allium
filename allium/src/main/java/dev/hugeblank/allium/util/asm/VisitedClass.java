@@ -92,7 +92,7 @@ public class VisitedClass {
         if (arg.getSort() == Type.OBJECT) {
             mappedDescriptor
                     .append("L")
-                    .append(ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(arg.getInternalName()))
+                    .append(ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(arg.getInternalName()).get(0))
                     .append(";");
         } else {
             mappedDescriptor.append(arg.getInternalName());

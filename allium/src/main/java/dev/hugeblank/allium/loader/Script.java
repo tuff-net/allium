@@ -5,6 +5,7 @@ import dev.hugeblank.allium.api.ScriptResource;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.util.Identifiable;
+import dev.hugeblank.allium.util.MixinConfigUtil;
 import net.fabricmc.api.EnvType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,6 +111,19 @@ public class Script implements Identifiable {
         destroyAllResources();
     }
 
+    public void preInitialize() {
+        if (MixinConfigUtil.isComplete()) {
+            getLogger().error("Attempted to pre-initialize after mixin configuration was loaded.");
+            return;
+        }
+        try {
+            getExecutor().preInitialize(envType);
+        } catch (Throwable e) {
+            //noinspection StringConcatenationArgumentToLogCall
+            getLogger().error("Could not pre-initialize allium script " + getID(), e);
+        }
+    }
+
     public void initialize() {
         if (isInitialized()) {
             getLogger().warn("Attempted to initialize while already active!");
@@ -117,7 +131,7 @@ public class Script implements Identifiable {
         }
         try {
             // Initialize and set module used by require
-            this.module = getExecutor().initialize(envType).arg(1);
+            this.module = getExecutor().initialize().arg(1);
             this.initialized.add(envType); // If all these steps are successful, we can set initialized to true
         } catch (Throwable e) {
             //noinspection StringConcatenationArgumentToLogCall

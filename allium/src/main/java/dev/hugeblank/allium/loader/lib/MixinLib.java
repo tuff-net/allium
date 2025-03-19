@@ -15,7 +15,7 @@ import org.squiddev.cobalt.LuaError;
 public class MixinLib implements WrappedLuaLibrary {
     private final Script script;
 
-    public MixinLib(Script script) {
+    public MixinLib(Script script, EnvType envType) {
         this.script = script;
     }
 

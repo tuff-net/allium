@@ -1,10 +1,7 @@
 package dev.hugeblank.allium.loader;
 
 import net.fabricmc.api.EnvType;
-import org.squiddev.cobalt.LuaError;
-import org.squiddev.cobalt.LuaState;
-import org.squiddev.cobalt.LuaThread;
-import org.squiddev.cobalt.Varargs;
+import org.squiddev.cobalt.*;
 import org.squiddev.cobalt.compiler.CompileException;
 import org.squiddev.cobalt.compiler.LoadState;
 import org.squiddev.cobalt.function.LuaFunction;
@@ -30,33 +27,36 @@ public class ScriptExecutor extends EnvironmentManager {
         return state;
     }
 
-    public Varargs initialize(EnvType envType) throws Throwable {
-        createEnvironment(script, envType);
+    public Varargs initialize() throws Throwable {
         if (entrypoint.has(Entrypoint.Type.STATIC) && entrypoint.has(Entrypoint.Type.DYNAMIC)) {
-            Varargs out = execute(Entrypoint.Type.STATIC, script.getID() + ":static");
-            execute(Entrypoint.Type.DYNAMIC, script.getID() + ":dynamic");
+            Varargs out = execute(Entrypoint.Type.STATIC);
+            execute(Entrypoint.Type.DYNAMIC);
             return out;
         } else if (entrypoint.has(Entrypoint.Type.STATIC)) {
-            return execute(Entrypoint.Type.STATIC, script.getID());
+            return execute(Entrypoint.Type.STATIC);
         } else if (entrypoint.has(Entrypoint.Type.DYNAMIC)) {
-            return execute(Entrypoint.Type.DYNAMIC, script.getID());
+            return execute(Entrypoint.Type.DYNAMIC);
+        } else if (entrypoint.has(Entrypoint.Type.MIXIN)) {
+            // It's ok to have a script that's just mixins. I guess.
+            return Constants.NIL;
         }
         // This should be caught sooner, but who knows maybe a dev (hugeblank) will come along and mess something up
         throw new Exception("Expected either static or dynamic entrypoint, got none");
     }
 
-    public void preInitialize() {
-
+    public void preInitialize(EnvType envType) throws CompileException, LuaError, IOException {
+        createEnvironment(script, envType);
+        if (entrypoint.has(Entrypoint.Type.MIXIN)) execute(Entrypoint.Type.MIXIN);
     }
 
 
     public Varargs reload() throws LuaError, CompileException, IOException {
-        if (entrypoint.has(Entrypoint.Type.DYNAMIC)) return execute(Entrypoint.Type.DYNAMIC, script.getID());
+        if (entrypoint.has(Entrypoint.Type.DYNAMIC)) return execute(Entrypoint.Type.DYNAMIC);
         return null;
     }
 
-    private Varargs execute(Entrypoint.Type type, String name) throws IOException, CompileException, LuaError {
-        return LuaThread.runMain(state, load(getInputStream(type), name));
+    private Varargs execute(Entrypoint.Type type) throws IOException, CompileException, LuaError {
+        return LuaThread.runMain(state, load(getInputStream(type), script.getID() + ":" + type));
     }
 
     private InputStream getInputStream(Entrypoint.Type entrypointType) throws IOException {

@@ -3,6 +3,8 @@ package dev.hugeblank.allium.loader;
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.LibraryInitializer;
 import dev.hugeblank.allium.api.WrappedLuaLibrary;
+import dev.hugeblank.allium.loader.lib.JavaLib;
+import dev.hugeblank.allium.loader.lib.MixinLib;
 import dev.hugeblank.allium.loader.lib.PackageLib;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
@@ -69,6 +71,8 @@ public class EnvironmentManager {
 
     static {
         registerLibrary(PackageLib::new);
+        registerLibrary(MixinLib::new);
+        registerLibrary(new JavaLib());
     }
 
     private static final class PrintMethod extends VarArgFunction {

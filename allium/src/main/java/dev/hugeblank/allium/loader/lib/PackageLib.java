@@ -51,7 +51,6 @@ public class PackageLib implements WrappedLuaLibrary {
                 RegisteredFunction.ofS("external_script_loader", this::externScriptLoader).create(),
                 // Loader to check the class files
                 RegisteredFunction.of("java_loader", this::javaLoader).create()
-
         );
     }
 
@@ -59,6 +58,14 @@ public class PackageLib implements WrappedLuaLibrary {
     public LuaValue add(LuaState state, LuaTable globals) throws LuaError {
         globals.rawset("require", RegisteredFunction.ofS("require", this::require).create());
         return WrappedLuaLibrary.super.add(state, globals);
+    }
+
+    @LuaWrapped
+    public String environment() {
+        return envType == null ? null : switch (envType) {
+            case CLIENT -> "client";
+            case SERVER -> "server";
+        };
     }
 
     public Varargs preloadLoader(LuaState state, DebugFrame frame, Varargs args) throws LuaError, UnwindThrowable {
