@@ -26,6 +26,8 @@ import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
 import org.squiddev.cobalt.LuaTable;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -51,7 +53,6 @@ public class MixinClassBuilder {
     private final ClassWriter c = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
     private int methodIndex = 0;
     private final Script script;
-    private final MixinAnnotator annotator;
 
     public MixinClassBuilder(String target, @Nullable EnvType targetEnvironment, boolean duck, Script script) throws LuaError {
         if (MixinConfigUtil.isComplete()) throw new IllegalStateException("Mixin cannot be created outside of preLaunch phase.");
@@ -60,7 +61,6 @@ public class MixinClassBuilder {
         this.duck = duck;
         LuaState state = script.getExecutor().getState();
         this.visitedClass = VisitedClass.ofClass(state, target);
-        this.annotator = new MixinAnnotator(state, visitedClass);
 
         EClass<?> superClass = EClass.fromJava(Object.class);
         this.c.visit(
@@ -126,13 +126,13 @@ public class MixinClassBuilder {
                     null
             );
             //noinspection DuplicatedCode
-            annotator.attachAnnotation(fieldVisitor, Shadow.class).visitEnd();
+            attachAnnotation(fieldVisitor, Shadow.class).visitEnd();
             // Automagically add other annotations, may or may not be needed.
             if ((visitedField.access() & ACC_FINAL) != 0) {
-                annotator.attachAnnotation(fieldVisitor, Final.class).visitEnd();
+                attachAnnotation(fieldVisitor, Final.class).visitEnd();
             }
             if ((visitedField.access() & ACC_SYNTHETIC) != 0) {
-                annotator.attachAnnotation(fieldVisitor, Dynamic.class).visitEnd();
+                attachAnnotation(fieldVisitor, Dynamic.class).visitEnd();
             }
             fieldVisitor.visitEnd();
         } else if (visitedClass.containsMethod(target)) {
@@ -145,13 +145,13 @@ public class MixinClassBuilder {
                     null
             );
             //noinspection DuplicatedCode
-            annotator.attachAnnotation(methodVisitor, Shadow.class).visitEnd();
+            attachAnnotation(methodVisitor, Shadow.class).visitEnd();
             // Automagically add other annotations, may or may not be needed.
             if ((visitedMethod.access() & ACC_FINAL) != 0) {
-                annotator.attachAnnotation(methodVisitor, Final.class).visitEnd();
+                attachAnnotation(methodVisitor, Final.class).visitEnd();
             }
             if ((visitedMethod.access() & ACC_SYNTHETIC) != 0) {
-                annotator.attachAnnotation(methodVisitor, Dynamic.class).visitEnd();
+                attachAnnotation(methodVisitor, Dynamic.class).visitEnd();
             }
             methodVisitor.visitEnd();
         }
@@ -356,7 +356,7 @@ public class MixinClassBuilder {
         );
         int thisVarOffset = (visitedValue.access() & ACC_STATIC) != 0 ? 0 : 1;
 
-        AnnotationVisitor annotationVisitor = annotator.attachAnnotation(methodVisitor, annotation.type().raw());
+        AnnotationVisitor annotationVisitor = attachAnnotation(methodVisitor, annotation.type().raw());
         annotation.apply(annotationVisitor);// Apply annotations to this method
         annotationVisitor.visitEnd();
 
@@ -365,6 +365,25 @@ public class MixinClassBuilder {
             writeFactory.write(methodVisitor, desc, thisVarOffset);
             methodVisitor.visitEnd();
         }
+    }
+
+    // I'm a hater of how ClassVisitor, MethodVisitor, FieldVisitor, etc. aren't all under a common interface.
+    private static AnnotationVisitor attachAnnotation(MethodVisitor visitor, Class<?> annotation) {
+        EClass<?> eAnnotation = EClass.fromJava(annotation);
+        return visitor.visitAnnotation(
+                annotation.descriptorString(),
+                !eAnnotation.hasAnnotation(Retention.class) ||
+                        eAnnotation.annotation(Retention.class).value().equals(RetentionPolicy.RUNTIME)
+        );
+    }
+
+    private static AnnotationVisitor attachAnnotation(FieldVisitor visitor, Class<?> annotation) {
+        EClass<?> eAnnotation = EClass.fromJava(annotation);
+        return visitor.visitAnnotation(
+                annotation.descriptorString(),
+                !eAnnotation.hasAnnotation(Retention.class) ||
+                        eAnnotation.annotation(Retention.class).value().equals(RetentionPolicy.RUNTIME)
+        );
     }
 
     @LuaWrapped
