@@ -321,7 +321,7 @@ public class MixinClassBuilder {
 
             int varPrefix = (Type.getArgumentsAndReturnSizes(visitedMethod.descriptor()) >> 2)+(locals == null ? 0 : locals.size())+1;
             AsmUtil.createArray(methodVisitor, varPrefix, paramTypes, Object.class, (visitor, index, arg) -> {
-                visitor.visitVarInsn(ALOAD, index); // <- 2
+                visitor.visitVarInsn(arg.getOpcode(ILOAD), index); // <- 2
                 AsmUtil.wrapPrimitive(visitor, arg); // <- 2 | -> 2 (sometimes)
                 if (index == 0) {
                     visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(Object.class)); // <- 2 | -> 2
