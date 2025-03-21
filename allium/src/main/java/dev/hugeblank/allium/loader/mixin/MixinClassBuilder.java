@@ -272,14 +272,17 @@ public class MixinClassBuilder {
             VisitedMethod visitedMethod = visitedClass.getMethod(descriptor);
             List<Type> params = visitedMethod.getParams();
             params.add(Type.getType(CallbackInfo.class));
-            List<Type> paramTypes = new ArrayList<>(params);
-            if ((visitedMethod.access() & ACC_STATIC) == 0) {
-                paramTypes.add(0, visitedClass.getType());
-            }
+
             int localOffset = -1;
             if (locals != null) {
                 localOffset = params.size();
                 locals.forEach((local) -> params.add(Type.getType(local.type())));
+            }
+
+            List<Type> paramTypes = new ArrayList<>(params);
+
+            if ((visitedMethod.access() & ACC_STATIC) == 0) {
+                paramTypes.add(0, visitedClass.getType());
             }
 
             this.writeMethod(
@@ -309,14 +312,14 @@ public class MixinClassBuilder {
         return (methodVisitor, desc, thisVarOffset) -> {
             // descriptor +1 for CallbackInfo
             if (localOffset > 0 && locals != null) {
-                for (int i = 0; i < locals.size()-1; i++) {
+                for (int i = 0; i < locals.size(); i++) {
                     AnnotationVisitor paramAnnoVisitor = attachParameterAnnotation(methodVisitor, i+localOffset, Local.class);
                     locals.get(i).visit(paramAnnoVisitor);
                     paramAnnoVisitor.visitEnd();
                 }
             }
 
-            int varPrefix = (Type.getArgumentsAndReturnSizes(visitedMethod.descriptor()) >> 2)+1;
+            int varPrefix = (Type.getArgumentsAndReturnSizes(visitedMethod.descriptor()) >> 2)+(locals == null ? 0 : locals.size())+1;
             AsmUtil.createArray(methodVisitor, varPrefix, paramTypes, Object.class, (visitor, index, arg) -> {
                 visitor.visitVarInsn(ALOAD, index); // <- 2
                 AsmUtil.wrapPrimitive(visitor, arg); // <- 2 | -> 2 (sometimes)

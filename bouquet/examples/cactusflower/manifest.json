@@ -1,0 +1,10 @@
+{
+  "id": "cactusflower",
+  "version": "1.0.0",
+  "name": "Cactus Flower",
+  "entrypoints": {
+    "static": "main.lua",
+    "mixin": "mixin.lua"
+  },
+  "mappings": "yarn"
+}

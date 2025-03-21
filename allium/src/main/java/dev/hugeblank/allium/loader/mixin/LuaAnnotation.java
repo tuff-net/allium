@@ -15,12 +15,10 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.*;
-import org.spongepowered.asm.mixin.injection.selectors.ITargetSelectorRemappable;
-import org.spongepowered.asm.mixin.injection.struct.MemberInfo;
-import org.spongepowered.asm.obfuscation.mapping.common.MappingMethod;
 import org.squiddev.cobalt.*;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 public class LuaAnnotation implements Annotating {
     private static final Map<Class<?>, String> REMAP_KEYS = new HashMap<>();
@@ -30,93 +28,46 @@ public class LuaAnnotation implements Annotating {
     private final String name;
     private final List<Annotating> prototype = new ArrayList<>();
 
-    public LuaAnnotation(LuaState state, @Nullable String name, LuaValue input, VisitedClass visitedClass, EClass<?> annotationClass) throws InvalidArgumentException, LuaError {
+    public LuaAnnotation(LuaState state, @Nullable String name, LuaTable input, VisitedClass visitedClass, EClass<?> annotationClass) throws InvalidArgumentException, LuaError {
         this.state = state;
         this.clazz = annotationClass;
         this.name = name;
-        if (input.type() == Constants.TTABLE) {
-            LuaTable table = input.checkTable();
-            for (EMethod method : annotationClass.declaredMethods()) {
-                String key = method.name();
-                LuaValue value = table.rawget(key);
-                EClass<?> returnType = method.rawReturnType();
-                EClass<?> arrayComponent = returnType.arrayComponent();
-                if (arrayComponent != null && value != Constants.NIL) {
-                    if (value.type() != Constants.TTABLE) {
-                        LuaTable t = new LuaTable();
-                        t.rawset(0, value);
-                        value = t;
-                    }
-                    LuaTable checkedTable = value.checkTable();
-                    List<Annotating> elements = new ArrayList<>();
-                    for (int i = 0; i < checkedTable.size(); i++) {
-                        String id = key+"["+ i + "]";
-                        LuaValue tableElement = checkedTable.rawget(i);
-                        if (arrayComponent.type() == ClassType.ANNOTATION) {
-                            elements.add(new LuaAnnotation(state, id, tableElement, visitedClass, arrayComponent));
-                        } else if (!value.isNil()) {
-                            if (arrayComponent.raw().isEnum()) {
-                                elements.add(new EnumElement(arrayComponent, id, tableElement.checkString()));
-                            } else {
-                                Object object = TypeCoercions.toJava(state, tableElement, arrayComponent);
-                                elements.add(new Element(arrayComponent, id, object));
-                            }
-                        }
-                    }
-                    prototype.add(new ArrayElement(arrayComponent, key, elements));
-                } else if (returnType.type() == ClassType.ANNOTATION) {
-                    prototype.add(new LuaAnnotation(state, key, value, visitedClass, returnType));
-                } else if (!value.isNil()) {
-                    if (returnType.raw().isEnum()) {
-                        prototype.add(new EnumElement(returnType, key, value.checkString()));
-                    } else {
-                        Object object = TypeCoercions.toJava(state, value, returnType);
-                        prototype.add(new Element(returnType, key, object));
-                    }
-                } else if (method.raw().getDefaultValue() == null) {
-                    throw new LuaError("Missing required element '" + key + "' while parsing " + annotationClass.name());
-                }
+        for (EMethod method : annotationClass.declaredMethods()) {
+            EClass<?> returnType = method.rawReturnType();
+            EClass<?> arrayComponent = returnType.arrayComponent();
+            boolean required = method.raw().getDefaultValue() == null;
+            LuaValue value = input.rawget(method.name());
+            if (method.name().equals("value") && value.isNil()) {
+                value = input.rawget(1);
             }
-        } else {
-            // TODO this is probably not working as intended
-            Optional<EMethod> maybeTarget = annotationClass.methods().stream()
-                    .filter(method -> method.name().equals("value"))
-                    .findFirst();
-            if (maybeTarget.isPresent()) {
-                boolean remap = maybeTarget.get().name().equals(REMAP_KEYS.get(annotationClass.raw()));
-                if (remap && input instanceof LuaString) {
-                    ITargetSelectorRemappable mapped = MemberInfo.parse(input.checkString(), null);
-                    Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
-                    boolean hasOwner  = mapped.getOwner() == null;
-                    String mappedOwner = hasOwner ? visitedClass.mappedClassName() : mapped.getOwner();
-                    String unmappedOwner = hasOwner ? null : mappings.getUnmapped(Mappings.asClass(mappedOwner)).get(0).replace(".", "/");
-                    String unmappedName = mappings.getUnmapped(Mappings.asMethod(mappedOwner, mapped.getName())).get(0);
-                    if (unmappedName != null) {
-                        String[] split = unmappedName.split("#");
-                        unmappedName = split.length == 2 ? split[1] : null;
+            if (required && value.isNil()) throw new LuaError("Expected value for '" + name + "' in annotation class " + annotationClass.name());
+            if (!value.isNil()) {
+                if (arrayComponent == null) {
+                    createAnnotating(method.name(), value, visitedClass, returnType, prototype::add);
+                } else {
+                    LuaTable tvalue = value.checkTable();
+                    List<Annotating> elements = new ArrayList<>();
+                    for (int i = 1; i <= tvalue.size(); i++) {
+                        createAnnotating(null, tvalue.rawget(i), visitedClass, arrayComponent, elements::add);
                     }
-                    final String mappedDesc = mapped.getDesc(), unmappedDesc;
-                    if (mappedDesc == null) {
-                        unmappedDesc = null;
-                    } else if (mappedDesc.startsWith("(")) {
-                        unmappedDesc = unmapMethodDescriptor(mappedDesc);
-                    } else {
-                        unmappedDesc = unmapFieldDescriptor(mappedDesc);
-                    }
-                    input = ValueFactory.valueOf(mapped
-                            .remapUsing(new MappingMethod(unmappedOwner, unmappedName, unmappedDesc), true)
-                            .toString()
-                    );
+                    prototype.add(new ArrayElement(returnType, method.name(), elements));
                 }
-                // If the user supplies a value here that can't be coerced
-                // into what the annotation is expecting, an explosion occurs.
-                Object value = TypeCoercions.toJava(state, input, maybeTarget.get().rawReturnType());
-                prototype.add(new Element(maybeTarget.get().rawReturnType(), "value", value));
             }
         }
     }
 
-    public LuaAnnotation(LuaState state, LuaValue input, VisitedClass visitedClass, EClass<?> annotationClass) throws InvalidArgumentException, LuaError {
+    private void createAnnotating(@Nullable String key, LuaValue value, VisitedClass visitedClass, EClass<?> returnType, Consumer<Annotating> consumer) throws LuaError, InvalidArgumentException {
+        if (returnType.type() == ClassType.ANNOTATION) {
+            if (value.type() != Constants.TTABLE) throw new LuaError("Expected table while annotating type " + returnType.name());
+            consumer.accept(new LuaAnnotation(state, key, value.checkTable(), visitedClass, returnType));
+        } else if (returnType.raw().isEnum() && value.isString()) {
+            consumer.accept(new EnumElement(returnType, key, value.checkString()));
+        } else if (!value.isNil()) {
+            consumer.accept(new Element(returnType, key, TypeCoercions.toJava(state, value, returnType)));
+        }
+    }
+
+    public LuaAnnotation(LuaState state, LuaTable input, VisitedClass visitedClass, EClass<?> annotationClass) throws InvalidArgumentException, LuaError {
         this(state, null, input, visitedClass, annotationClass);
     }
 
@@ -158,8 +109,8 @@ public class LuaAnnotation implements Annotating {
     }
 
     @Override
-    public void apply(AnnotationVisitor visitor) {
-        prototype.forEach((value) -> {
+    public void apply(AnnotationVisitor visitor) throws LuaError {
+        for (Annotating value : prototype) {
             if (value instanceof LuaAnnotation annotation) {
                 AnnotationVisitor nextVisitor = visitor.visitAnnotation(annotation.name(), value.type().raw().descriptorString());
                 annotation.apply(nextVisitor);
@@ -167,7 +118,7 @@ public class LuaAnnotation implements Annotating {
             } else {
                 value.apply(visitor);
             }
-        });
+        }
     }
 
     public LuaAnnotation findAnnotation(String key) {
@@ -179,29 +130,37 @@ public class LuaAnnotation implements Annotating {
         return null;
     }
 
-    public <T> T findElement(String name, EClass<T> eClass) {
+    public <T> T findElement(String name, EClass<T> eClass) throws LuaError {
         for (Annotating annotating : prototype) {
-            if (annotating.name().equals(name) && annotating.type().equals(eClass)) {
-                if (annotating instanceof Element element) {
-                    return eClass.cast(element.object());
-                } else if (annotating instanceof ArrayElement arrayElement) {
-                    if (arrayElement.objects().get(0) instanceof Element element) {
+            if (annotating.name().equals(name)) {
+                try {
+                    if (annotating.type().equals(eClass) && annotating instanceof Element element) {
                         return eClass.cast(element.object());
+                    } else if (annotating.type().arrayComponent().equals(eClass) && annotating instanceof ArrayElement arrayElement) {
+                        List<Annotating> objects = arrayElement.objects();
+                        if (!objects.isEmpty() && objects.get(0) instanceof Element element) {
+                            return eClass.cast(element.object());
+                        } else {
+                            throw new LuaError("Annotating element '" + name + "' is empty");
+                        }
                     }
+                } catch (ClassCastException e) {
+                    throw new LuaError("Annotating element '" + name + "' is not of type " + eClass.name());
                 }
             }
         }
         return null;
     }
 
-    public <T> T findElement(String name, Class<T> clazz) {
+    public <T> T findElement(String name, Class<T> clazz) throws LuaError {
         return findElement(name, EClass.fromJava(clazz));
     }
 
     private record Element(EClass<?> type, String name, Object object) implements Annotating {
 
         @Override
-        public void apply(AnnotationVisitor annotationVisitor) {
+        public void apply(AnnotationVisitor annotationVisitor) throws LuaError {
+            if (object == null) throw new LuaError("Missing value for key '" + name + "'");
             annotationVisitor.visit(name, object);
         }
     }
@@ -217,7 +176,7 @@ public class LuaAnnotation implements Annotating {
     private record ArrayElement(EClass<?> type, String name, List<Annotating> objects) implements Annotating {
 
         @Override
-        public void apply(AnnotationVisitor annotationVisitor) {
+        public void apply(AnnotationVisitor annotationVisitor) throws LuaError {
             AnnotationVisitor visitor = annotationVisitor.visitArray(name);
             for (Annotating object : objects) {
                 if (object instanceof LuaAnnotation annotation) {
