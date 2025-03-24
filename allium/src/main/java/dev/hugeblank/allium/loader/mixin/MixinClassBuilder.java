@@ -30,10 +30,7 @@ import org.squiddev.cobalt.LuaTable;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
 import static org.objectweb.asm.Opcodes.*;
 
@@ -117,42 +114,42 @@ public class MixinClassBuilder {
     // Generally that's what's desired so can ya fault me for doing it this way?
     // TODO: Establish a way to access shadowed values. Or how about a custom injector that does what @Local does for fields?
 //    @LuaWrapped
-    public void shadow(String target) {
-        if (visitedClass.containsField(target)) {
-            VisitedField visitedField = visitedClass.getField(target);
+    public void shadow(String target) throws LuaError {
+        Optional<VisitedMember> maybeElement = visitedClass.get(target);
+        if (maybeElement.isEmpty()) throw new LuaError("Target '" + target + "' does not exist on class '" + visitedClass.name() + "'");
+        if (maybeElement.get() instanceof VisitedField field) {
             FieldVisitor fieldVisitor = c.visitField(
-                    visitedField.access() | ACC_PUBLIC,
-                    visitedField.descriptor(),
-                    visitedField.name(),
-                    visitedField.signature(),
+                    field.access() | ACC_PUBLIC,
+                    field.descriptor(),
+                    field.name(),
+                    field.signature(),
                     null
             );
             //noinspection DuplicatedCode
             attachAnnotation(fieldVisitor, Shadow.class).visitEnd();
             // Automagically add other annotations, may or may not be needed.
-            if ((visitedField.access() & ACC_FINAL) != 0) {
+            if ((field.access() & ACC_FINAL) != 0) {
                 attachAnnotation(fieldVisitor, Final.class).visitEnd();
             }
-            if ((visitedField.access() & ACC_SYNTHETIC) != 0) {
+            if ((field.access() & ACC_SYNTHETIC) != 0) {
                 attachAnnotation(fieldVisitor, Dynamic.class).visitEnd();
             }
             fieldVisitor.visitEnd();
-        } else if (visitedClass.containsMethod(target)) {
-            VisitedMethod visitedMethod = visitedClass.getMethod(target);
+        } else if (maybeElement.get() instanceof VisitedMethod method) {
             MethodVisitor methodVisitor = c.visitMethod(
-                    visitedMethod.access() | ACC_PUBLIC | ACC_ABSTRACT,
-                    visitedMethod.descriptor(),
-                    visitedMethod.name(),
-                    visitedMethod.signature(),
+                    method.access() | ACC_PUBLIC | ACC_ABSTRACT,
+                    method.descriptor(),
+                    method.name(),
+                    method.signature(),
                     null
             );
             //noinspection DuplicatedCode
             attachAnnotation(methodVisitor, Shadow.class).visitEnd();
             // Automagically add other annotations, may or may not be needed.
-            if ((visitedMethod.access() & ACC_FINAL) != 0) {
+            if ((method.access() & ACC_FINAL) != 0) {
                 attachAnnotation(methodVisitor, Final.class).visitEnd();
             }
-            if ((visitedMethod.access() & ACC_SYNTHETIC) != 0) {
+            if ((method.access() & ACC_SYNTHETIC) != 0) {
                 attachAnnotation(methodVisitor, Dynamic.class).visitEnd();
             }
             methodVisitor.visitEnd();
@@ -179,9 +176,10 @@ public class MixinClassBuilder {
     @LuaWrapped
     public void invoker(LuaTable annotations) throws InvalidMixinException, LuaError, InvalidArgumentException {
         String methodName = getTargetValue(annotations);
-        if (visitedClass.containsMethod(methodName)) {
-            VisitedMethod visitedMethod = visitedClass.getMethod(methodName);
-            String mappedName = visitedMethod.mappedName(script.getExecutor().getState());
+        Optional<VisitedMethod> maybeMethod = visitedClass.getMethod(methodName);
+        if (maybeMethod.isPresent()) {
+            VisitedMethod method = maybeMethod.get();
+            String mappedName = method.mappedName(script.getExecutor().getState());
             mappedName = "invoke" +
                     mappedName.substring(0, 1).toUpperCase(Locale.getDefault()) + // Uppercase first letter
                     mappedName.substring(1);// Rest of name
@@ -194,12 +192,12 @@ public class MixinClassBuilder {
             );
 
             this.writeMethod(
-                    visitedMethod,
-                    visitedMethod.needsInstance() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
+                    method,
+                    method.needsInstance() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
                     mappedName,
-                    List.of(Type.getArgumentTypes(visitedMethod.descriptor())),
-                    Type.getReturnType(visitedMethod.descriptor()),
-                    visitedMethod.needsInstance() ? createInvokerWriteFactory() : null,
+                    List.of(Type.getArgumentTypes(method.descriptor())),
+                    Type.getReturnType(method.descriptor()),
+                    method.needsInstance() ? createInvokerWriteFactory() : null,
                     luaAnnotation
             );
         }
@@ -215,10 +213,11 @@ public class MixinClassBuilder {
 
     private void writeAccessor(boolean isSetter, LuaTable annotations) throws InvalidMixinException, LuaError, InvalidArgumentException {
         String fieldName = getTargetValue(annotations);
-        if (visitedClass.containsField(fieldName)) {
-            VisitedField visitedField = visitedClass.getField(fieldName);
-            Type visitedFieldType = Type.getType(visitedField.descriptor());
-            String mappedName = visitedField.mappedName(script.getExecutor().getState());
+        Optional<VisitedField> maybeField = visitedClass.getField(fieldName);
+        if (maybeField.isPresent()) {
+            VisitedField field = maybeField.get();
+            Type visitedFieldType = Type.getType(field.descriptor());
+            String mappedName = field.mappedName(script.getExecutor().getState());
             mappedName = (isSetter ? "set" : "get") + // set or get
                     mappedName.substring(0, 1).toUpperCase(Locale.getDefault()) + // Uppercase first letter
                     mappedName.substring(1);
@@ -231,12 +230,12 @@ public class MixinClassBuilder {
             );
 
             this.writeMethod(
-                    visitedField,
-                    visitedField.needsInstance() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
+                    field,
+                    field.needsInstance() ? ACC_PUBLIC : (ACC_PUBLIC|ACC_ABSTRACT),
                     mappedName, // Rest of name
                     isSetter ? List.of(visitedFieldType) : List.of(),
                     isSetter ? Type.VOID_TYPE : visitedFieldType,
-                    visitedField.needsInstance() ? createAccessorWriteFactory() : null,
+                    field.needsInstance() ? createAccessorWriteFactory() : null,
                     luaAnnotation
             );
         }
@@ -268,9 +267,10 @@ public class MixinClassBuilder {
 
     private MixinEventType writeInject(String eventName, LuaAnnotation annotation, @Nullable List<MixinLib.LuaLocal> locals) throws LuaError, InvalidMixinException, InvalidArgumentException {
         String descriptor = annotation.findElement("method", String.class);
-        if (visitedClass.containsMethod(descriptor)) {
-            VisitedMethod visitedMethod = visitedClass.getMethod(descriptor);
-            List<Type> params = visitedMethod.getParams();
+        Optional<VisitedMethod> maybeMethod = visitedClass.getMethod(descriptor);
+        if (maybeMethod.isPresent()) {
+            VisitedMethod method = maybeMethod.get();
+            List<Type> params = method.getParams();
             params.add(Type.getType(CallbackInfo.class));
 
             int localOffset = -1;
@@ -281,21 +281,21 @@ public class MixinClassBuilder {
 
             List<Type> paramTypes = new ArrayList<>(params);
 
-            if ((visitedMethod.access() & ACC_STATIC) == 0) {
+            if ((method.access() & ACC_STATIC) == 0) {
                 paramTypes.add(0, visitedClass.getType());
             }
 
             this.writeMethod(
-                    visitedMethod,
+                    method,
                     ACC_PRIVATE,
                     script.getID() + "$" +
-                            visitedMethod.name()
+                            method.name()
                             .replace("<", "")
                             .replace(">", "") +
                             methodIndex++,
                     params,
                     Type.VOID_TYPE,
-                    createInjectWriteFactory(eventName, visitedMethod, paramTypes, localOffset, locals),
+                    createInjectWriteFactory(eventName, method, paramTypes, localOffset, locals),
                     annotation
             );
 
@@ -355,7 +355,7 @@ public class MixinClassBuilder {
     }
 
     private void writeMethod(
-            VisitedElement visitedValue,
+            VisitedMember visitedValue,
             int accessOverride,
             String name,
             List<Type> params,

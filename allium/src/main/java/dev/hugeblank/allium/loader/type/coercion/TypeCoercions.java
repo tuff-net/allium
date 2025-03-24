@@ -1,6 +1,6 @@
 package dev.hugeblank.allium.loader.type.coercion;
 
-import dev.hugeblank.allium.loader.type.AlliumUserdata;
+import dev.hugeblank.allium.loader.type.AlliumObjectUserdata;
 import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.UDFFunctions;
 import dev.hugeblank.allium.loader.type.UserdataFactory;
@@ -54,7 +54,7 @@ public class TypeCoercions {
         if (value.isNil())
             return null;
         
-        if (value instanceof AlliumUserdata<?> userdata)
+        if (value instanceof AlliumObjectUserdata<?> userdata)
             try {
                 return userdata.toUserdata(clatz.wrapPrimitive());
             } catch (ClassCastException e) {

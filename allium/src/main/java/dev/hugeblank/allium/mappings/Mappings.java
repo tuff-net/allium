@@ -8,7 +8,9 @@ import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EField;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
 import org.jetbrains.annotations.Debug;
+import org.spongepowered.asm.mixin.injection.struct.MemberInfo;
 
+import java.lang.reflect.Member;
 import java.util.*;
 
 @Debug.Renderer(text = "\"Mappings { ... }\"", hasChildren = "false")

@@ -4,15 +4,15 @@ import me.basiqueevangelist.enhancedreflection.api.EClass;
 import org.squiddev.cobalt.LuaTable;
 import org.squiddev.cobalt.LuaUserdata;
 
-public class AlliumUserdata<T> extends LuaUserdata {
+public class AlliumObjectUserdata<T> extends LuaUserdata {
     private final EClass<T> clazz;
 
-    AlliumUserdata(Object obj, LuaTable metatable, EClass<T> clazz) {
+    AlliumObjectUserdata(Object obj, LuaTable metatable, EClass<T> clazz) {
         super(obj, metatable);
         this.clazz = clazz;
     }
 
-    AlliumUserdata(Object obj, LuaTable metatable, Class<T> clazz) {
+    AlliumObjectUserdata(Object obj, LuaTable metatable, Class<T> clazz) {
         this(obj, metatable, EClass.fromJava(clazz));
     }
 
@@ -44,6 +44,6 @@ public class AlliumUserdata<T> extends LuaUserdata {
 
     @Override
     public String toString() {
-        return "AlliumUserData<" + clazz.name().replace(clazz.packageName() + ".", "") + ">[" + (super.instance == null ? "null" : super.instance.toString()) + "]";
+        return "AlliumObjectUserdata<" + clazz.name().replace(clazz.packageName() + ".", "") + ">[" + (super.instance == null ? "null" : super.instance.toString()) + "]";
     }
 }

@@ -104,7 +104,7 @@ public final class StaticBinder {
             }
         });
 
-        return new LuaUserdata(clazz, metatable);
+        return new AlliumClassUserdata(clazz, metatable);
     }
 
     private static Varargs createInstance(EClass<?> clazz, LuaState state, Varargs args) throws LuaError {

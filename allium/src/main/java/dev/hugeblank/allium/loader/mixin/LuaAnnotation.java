@@ -5,6 +5,7 @@ import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.util.asm.VisitedClass;
+import dev.hugeblank.allium.util.asm.VisitedMember;
 import me.basiqueevangelist.enhancedreflection.api.ClassType;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
@@ -43,12 +44,12 @@ public class LuaAnnotation implements Annotating {
             if (required && value.isNil()) throw new LuaError("Expected value for '" + name + "' in annotation class " + annotationClass.name());
             if (!value.isNil()) {
                 if (arrayComponent == null) {
-                    createAnnotating(method.name(), value, visitedClass, returnType, prototype::add);
+                    createAnnotating(method.name(), null, value, visitedClass, returnType, annotationClass, prototype::add);
                 } else {
                     LuaTable tvalue = value.checkTable();
                     List<Annotating> elements = new ArrayList<>();
                     for (int i = 1; i <= tvalue.size(); i++) {
-                        createAnnotating(null, tvalue.rawget(i), visitedClass, arrayComponent, elements::add);
+                        createAnnotating(null, method.name(), tvalue.rawget(i), visitedClass, arrayComponent, annotationClass, elements::add);
                     }
                     prototype.add(new ArrayElement(returnType, method.name(), elements));
                 }
@@ -56,7 +57,13 @@ public class LuaAnnotation implements Annotating {
         }
     }
 
-    private void createAnnotating(@Nullable String key, LuaValue value, VisitedClass visitedClass, EClass<?> returnType, Consumer<Annotating> consumer) throws LuaError, InvalidArgumentException {
+    private void createAnnotating(@Nullable String key, @Nullable String arrayKey, LuaValue value, VisitedClass visitedClass, EClass<?> returnType, EClass<?> annotationClass, Consumer<Annotating> consumer) throws LuaError, InvalidArgumentException {
+        if (returnType.raw().equals(String.class)) {
+            String rkey = REMAP_KEYS.get(annotationClass.raw());
+            if (rkey.equals(key) || rkey.equals(arrayKey)) {
+                value = unmapValue(visitedClass, value);
+            }
+        }
         if (returnType.type() == ClassType.ANNOTATION) {
             if (value.type() != Constants.TTABLE) throw new LuaError("Expected table while annotating type " + returnType.name());
             consumer.accept(new LuaAnnotation(state, key, value.checkTable(), visitedClass, returnType));
@@ -65,6 +72,15 @@ public class LuaAnnotation implements Annotating {
         } else if (!value.isNil()) {
             consumer.accept(new Element(returnType, key, TypeCoercions.toJava(state, value, returnType)));
         }
+    }
+
+    private LuaValue unmapValue(VisitedClass visitedClass, LuaValue value) throws LuaError {
+        String target = value.checkString();
+        Optional<VisitedMember> element = visitedClass.get(target);
+        if (element.isPresent()) {
+            return LuaString.valueOf(element.get().unmappedMixinDescriptor());
+        }
+        return Constants.NIL;
     }
 
     public LuaAnnotation(LuaState state, LuaTable input, VisitedClass visitedClass, EClass<?> annotationClass) throws InvalidArgumentException, LuaError {

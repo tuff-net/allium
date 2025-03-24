@@ -3,17 +3,14 @@ package dev.hugeblank.allium.util.asm;
 import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.mappings.Mappings;
 import org.objectweb.asm.*;
-import org.spongepowered.asm.service.MixinService;
+import org.spongepowered.asm.mixin.injection.struct.MemberInfo;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.*;
 
 import static org.objectweb.asm.Opcodes.ACC_INTERFACE;
-import static org.objectweb.asm.Opcodes.ASM9;
 
 public class VisitedClass {
     private static final Map<String, VisitedClass> VISITED = new HashMap<>();
@@ -21,61 +18,84 @@ public class VisitedClass {
     private final Map<String, VisitedField> visitedFields = new HashMap<>();
     private final Map<String, VisitedMethod> visitedMethods = new HashMap<>();
 
-    private final String mappedClassName;
+    private final TargetClassVisitor.MappingsPair mappingsPair;
     private final int version;
     private final int access;
-    private final String className;
     private final String signature;
     private final String superName;
     private final String[] interfaces;
+    private final List<VisitedClass> inheritance = new ArrayList<>();
 
-    public VisitedClass(String mappedClassName, int version, int access, String className, String signature, String superName, String[] interfaces) {
-        this.mappedClassName = mappedClassName;
+    public VisitedClass(TargetClassVisitor.MappingsPair mappingsPair, int version, int access, String signature, String superName, String[] interfaces) {
+        this.mappingsPair = mappingsPair;
         this.version = version;
         this.access = access;
-        this.className = className;
         this.signature = signature;
         this.superName = superName;
         this.interfaces = interfaces;
-        VISITED.put(mappedClassName, this);
+        VISITED.put(mappingsPair.mapped(), this);
+    }
+
+    public void addInheritance(VisitedClass visitedClass) {
+        inheritance.add(visitedClass);
     }
 
     public Type getType() {
-        return Type.getType("L"+className+";");
+        return Type.getType("L"+mappingsPair.unmappedPath()+";");
     }
 
-    public boolean containsMethod(String name) {
-        return visitedMethods.containsKey(name);
-    }
 
-    public VisitedMethod getMethod(String name) {
-        return visitedMethods.get(name);
-    }
-
-    public boolean containsField(String name) {
-        return visitedFields.containsKey(name);
-    }
-
-    public VisitedField getField(String name) {
-        return visitedFields.get(name);
-    }
-
-    public VisitedElement get(String name) {
-        if (visitedMethods.containsKey(name)) {
-            return visitedMethods.get(name);
-        } else {
-            return visitedFields.get(name);
+    public Optional<VisitedMethod> getMethod(String name) {
+        Optional<VisitedMember> member = get(name);
+        if (member.isPresent() && member.get() instanceof VisitedMethod method) {
+            return Optional.of(method);
         }
+        return Optional.empty();
     }
 
-    private void addVisitedField(LuaState state, int access, String name, String descriptor, String signature, Object value) throws LuaError {
-        String[] mapped = ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asMethod(className, name)).split("#");
-        visitedFields.put(mapped[1], new VisitedField(this, access, name, descriptor, signature, value));
+    public Optional<VisitedField> getField(String name) {
+        Optional<VisitedMember> member = get(name);
+        if (member.isPresent() && member.get() instanceof VisitedField field) {
+            return Optional.of(field);
+        }
+        return Optional.empty();
     }
 
-    private void addVisitedMethod(LuaState state, int access, String name, String descriptor, String signature, String[] exceptions) throws LuaError {
-        String[] mapped = ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asMethod(className, name)).split("#");
-        String key = mapped[1];
+    public Optional<VisitedMember> get(String name) {
+        String info = parseDescriptor(this, name).toString();
+        return get(new ArrayList<>(), info);
+    }
+
+    // Ldev/hugeblank/allium/util/asm/TargetClassVisitor;visitMethod(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)Lorg/objectweb/asm/MethodVisitor;
+
+    // TODO: respectfully, this class plus mappings suck.
+    // So basically for finding the method name we have to dig from the source class down. But then creating the mapping is just taking everything that was already there.
+    // This will probably not work in all mappings, it barely works with tiny. In my dream world all of this is in the mappings and we can route to a class/method just by that.
+
+    private Optional<VisitedMember> get(List<VisitedClass> visited, String info) {
+        visited.add(this);
+        // If the descriptor lacks an owner then we know it must belong to the class we're currently in, no recursion necessary.
+        // The only thing we WILL have to recurse for is the member name.
+        Optional<VisitedMember> member = Optional.ofNullable(visitedMethods.get(info));
+        if (member.isPresent()) return member;
+        member = Optional.ofNullable(visitedFields.get(info));
+        if (member.isPresent()) return member;
+        for (VisitedClass visitedClass : inheritance) {
+            if (visited.contains(visitedClass)) continue;
+            member = visitedClass.get(visited, info);
+            if (member.isPresent()) {
+                return member;
+            }
+        }
+        return Optional.empty();
+    }
+
+    void addVisitedField(LuaState state, int access, String name, String descriptor, String signature, Object value) throws LuaError {
+        visitedFields.put(findMapping(state, name), new VisitedField(this, access, name, descriptor, signature, value));
+    }
+
+    void addVisitedMethod(LuaState state, int access, String name, String descriptor, String signature, String[] exceptions) throws LuaError {
+        String key = "L" + mappingsPair.mappedPath() + ";" + findMapping(state, name);
         StringBuilder mappedDescriptor = new StringBuilder("(");
         for (Type arg : Type.getArgumentTypes(descriptor)) {
             mapTypeArg(state, mappedDescriptor, arg);
@@ -88,6 +108,22 @@ public class VisitedClass {
         visitedMethods.put(key, new VisitedMethod(this, access, name, descriptor, signature, exceptions));
     }
 
+    private String findMapping(LuaState state, String methodName) throws LuaError {
+        Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
+        String mapped = Mappings.asMethod(mappingsPair.mappedPath(), methodName);
+        String target = mappings.getMapped(mapped);
+        if (!target.equals(mapped)) {
+            return target.split("#")[1];
+        }
+        for (VisitedClass visitedClass : inheritance) {
+            target = visitedClass.findMapping(state, methodName);
+            if (!target.equals(mapped)) {
+                return target.split("#")[1];
+            }
+        }
+        return methodName;
+    }
+
     private void mapTypeArg(LuaState state, StringBuilder mappedDescriptor, Type arg) throws LuaError {
         if (arg.getSort() == Type.OBJECT) {
             mappedDescriptor
@@ -97,10 +133,6 @@ public class VisitedClass {
         } else {
             mappedDescriptor.append(arg.getInternalName());
         }
-    }
-
-    public String mappedClassName() {
-        return mappedClassName;
     }
 
     public boolean isInterface() {
@@ -116,7 +148,7 @@ public class VisitedClass {
     }
 
     public String name() {
-        return className;
+        return mappingsPair.unmappedPath();
     }
 
     public String signature() {
@@ -131,50 +163,26 @@ public class VisitedClass {
         return interfaces;
     }
 
+    public static MemberInfo remap(LuaState state, MemberInfo info) throws LuaError {
+        String[] unmappedSrc = ScriptRegistry.scriptFromState(state).getMappings()
+                .getUnmapped(Mappings.asMethod(info.getOwner(), info.getName())).get(0).split("#");
+        return new MemberInfo(unmappedSrc[1], unmappedSrc[0], info.getDesc());
+    }
+
+    public static MemberInfo parseDescriptor(VisitedClass visitedClass, String descriptor) {
+        MemberInfo info = MemberInfo.parse(descriptor, null);
+        if (!info.isFullyQualified()) {
+            info = new MemberInfo(info.getName(), visitedClass.mappingsPair.mappedPath(), info.getDesc());
+        }
+        return info;
+    }
+
     public static VisitedClass ofClass(LuaState state, String mappedClassName) throws LuaError {
         if (!VISITED.containsKey(mappedClassName)) {
-            String unmappedName = ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(mappedClassName).get(0);
             try {
-                final AtomicReference<LuaError> err = new AtomicReference<>(null);
-                new ClassReader(MixinService.getService().getResourceAsStream(unmappedName.replace(".", "/") + ".class")).accept(
-                        new ClassVisitor(ASM9) {
-                            VisitedClass instance;
-
-                            @Override
-                            public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-                                instance = new VisitedClass(mappedClassName, version, access, name, signature, superName, interfaces);
-                                super.visit(version, access, name, signature, superName, interfaces);
-                            }
-
-                            @Override
-                            public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
-                                if (err.get() == null) {
-                                    try {
-                                        instance.addVisitedField(state, access, name, descriptor, signature, value);
-                                    } catch (LuaError e) {
-                                        err.set(e);
-                                    }
-                                }
-                                return super.visitField(access, name, descriptor, signature, value);
-                            }
-
-                            @Override
-                            public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                                if (err.get() == null) {
-                                    try {
-                                        instance.addVisitedMethod(state, access, name, descriptor, signature, exceptions);
-                                    } catch (LuaError e) {
-                                        err.set(e);
-                                    }
-                                }
-                                return super.visitMethod(access, name, descriptor, signature, exceptions);
-                            }
-                        },
-                        ClassReader.SKIP_FRAMES
-                );
-                if (err.get() != null) throw err.get();
+                TargetClassVisitor.parseMappedTarget(state, mappedClassName);
             } catch (IOException e) {
-                throw new LuaError(new RuntimeException("Could not read target class: " + mappedClassName + " (unmapped:" + unmappedName + ")", e));
+                throw new LuaError(new RuntimeException("Could not read target class: " + mappedClassName, e));
             }
         }
         return VISITED.get(mappedClassName);

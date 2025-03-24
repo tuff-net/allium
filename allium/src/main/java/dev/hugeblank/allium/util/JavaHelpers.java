@@ -1,7 +1,7 @@
 package dev.hugeblank.allium.util;
 
 import dev.hugeblank.allium.loader.ScriptRegistry;
-import dev.hugeblank.allium.loader.type.AlliumUserdata;
+import dev.hugeblank.allium.loader.type.AlliumObjectUserdata;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import org.squiddev.cobalt.*;
 
@@ -9,7 +9,7 @@ public class JavaHelpers {
 
 
     public static <T> T checkUserdata(LuaValue value, Class<T> clazz) throws LuaError {
-        if (value instanceof AlliumUserdata<?> userdata) {
+        if (value instanceof AlliumObjectUserdata<?> userdata) {
             try {
                 return userdata.toUserdata(clazz);
             } catch (Exception e) {
@@ -37,9 +37,9 @@ public class JavaHelpers {
             return getRawClass(state, value.checkString());
         } else if (value.isNil()) {
             return null;
-        } else if (value instanceof LuaTable table && table.rawget("allium_java_class") instanceof AlliumUserdata<?> userdata) {
+        } else if (value instanceof LuaTable table && table.rawget("allium_java_class") instanceof AlliumObjectUserdata<?> userdata) {
             return userdata.toUserdata(EClass.class);
-        } else if (value instanceof AlliumUserdata<?> userdata) {
+        } else if (value instanceof AlliumObjectUserdata<?> userdata) {
             if (userdata.instanceOf(EClass.class)) {
                 return userdata.toUserdata(EClass.class);
             } else if (userdata.instanceOf(Class.class)) {
