@@ -14,7 +14,7 @@ val loaderVersion: String by project
 
 // Common Dependencies
 val cobalt: String by project
-val tinyParser: String by project
+val mappingIo: String by project
 val enhancedReflections: String by project
 
 // Bouquet Dependencies
@@ -57,7 +57,6 @@ subprojects {
     dependencies {
         minecraft("com.mojang", "minecraft", minecraftVersion)
         mappings("net.fabricmc", "yarn", yarnMappings, null, "v2")
-//        mappings("net.fabricmc", "intermediary", "1.21.1", null, "v2")
         modImplementation("net.fabricmc", "fabric-loader", loaderVersion)
     }
 

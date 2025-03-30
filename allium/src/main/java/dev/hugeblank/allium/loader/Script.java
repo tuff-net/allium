@@ -4,9 +4,11 @@ import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.ScriptResource;
 import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.PlatformMappings;
 import dev.hugeblank.allium.util.Identifiable;
 import dev.hugeblank.allium.util.MixinConfigUtil;
 import net.fabricmc.api.EnvType;
+import net.fabricmc.mappingio.tree.VisitableMappingTree;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.squiddev.cobalt.LuaError;
@@ -185,8 +187,8 @@ public class Script implements Identifiable {
         return manifest.name();
     }
 
-    public Mappings getMappings() {
-        return Mappings.REGISTRY.get(manifest.mappings());
+    public VisitableMappingTree getMappings() {
+        return PlatformMappings.of(manifest.mappings());
     }
 
     public Logger getLogger() {

@@ -1,6 +1,9 @@
 package dev.hugeblank.allium.util;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.api.AlliumExtension;
 import dev.hugeblank.allium.loader.Script;
@@ -12,6 +15,8 @@ import net.fabricmc.loader.api.ModContainer;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URL;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -19,10 +24,13 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class SetupHelpers {
+    private static final Gson GSON = new Gson();
+
     public static void initializeEnvironment() {
         ScriptRegistry registry = ScriptRegistry.getInstance();
         registry.forEach(Script::initialize);
@@ -98,6 +106,7 @@ public class SetupHelpers {
         try {
             if (!Files.exists(FileHelper.PERSISTENCE_DIR)) Files.createDirectory(FileHelper.PERSISTENCE_DIR);
             if (!Files.exists(FileHelper.CONFIG_DIR)) Files.createDirectory(FileHelper.CONFIG_DIR);
+            if (!Files.exists(FileHelper.MAPPINGS_CFG_DIR)) Files.createDirectories(FileHelper.MAPPINGS_CFG_DIR);
         } catch (IOException e) {
             throw new RuntimeException("Couldn't create config directory", e);
         }
@@ -132,5 +141,19 @@ public class SetupHelpers {
                 throw new RuntimeException("Couldn't delete dump directory", e);
             }
         }
+    }
+
+    public static String getGameVersion() {
+        Optional<ModContainer> gameContainer = FabricLoader.getInstance().getModContainer("minecraft");
+        if (gameContainer.isEmpty()) throw new IllegalStateException("Missing 'minecraft' mod container");
+        return gameContainer.get().getMetadata().getVersion().getFriendlyString();
+    }
+
+    public static JsonObject fetch(String url) throws IOException {
+        return JsonParser.parseReader(new InputStreamReader(new URL(url).openStream())).getAsJsonObject();
+    }
+
+    public static <T> T fetch(String url, Class<T> klass) throws IOException {
+        return GSON.fromJson(new InputStreamReader(new URL(url).openStream()), klass);
     }
 }

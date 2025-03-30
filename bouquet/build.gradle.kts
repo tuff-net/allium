@@ -2,7 +2,7 @@ val mavenGroup: String by project
 
 // Common Dependencies
 val cobalt: String by project
-val tinyParser: String by project
+val mappingIo: String by project
 val enhancedReflections: String by project
 
 val bouquetVersion: String by project
@@ -34,7 +34,7 @@ loom {
 dependencies {
 	modImplementation("cc.tweaked", "cobalt", cobalt)
 	modImplementation("me.basiqueevangelist","enhanced-reflection", enhancedReflections)
-	modImplementation("net.fabricmc", "tiny-mappings-parser", tinyParser)
+	modImplementation("net.fabricmc", "mapping-io", mappingIo)
 
 	implementation(include("io.netty", "netty-codec-http", nettyHttp))
 	modImplementation("eu.pb4", "placeholder-api", placeholderApi)

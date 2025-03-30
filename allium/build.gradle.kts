@@ -6,7 +6,7 @@ val alliumBaseName: String by project
 
 // Common Dependencies
 val cobalt: String by project
-val tinyParser: String by project
+val mappingIo: String by project
 val enhancedReflections: String by project
 
 // Following by example, using semantic versioning null
@@ -24,7 +24,7 @@ base {
 dependencies {
 	modImplementation(include("cc.tweaked", "cobalt", cobalt))
 	modImplementation(include("me.basiqueevangelist","enhanced-reflection", enhancedReflections))
-	modImplementation(include("net.fabricmc", "tiny-mappings-parser", tinyParser))
+	modImplementation(include("net.fabricmc", "mapping-io", mappingIo))
 }
 
 java {

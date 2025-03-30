@@ -1,8 +1,10 @@
 # <img src="logos/logo.png" alt="Allium Logo" width="300"/>
 
-[![Github Stars](https://img.shields.io/github/stars/moongardenmods/allium?color=blue&label=Stars&logo=github&style=flat)](https://github.com/moongardenmods/allium/stargazers) 
+[![Github Stars](https://img.shields.io/github/stars/moongardenmods/allium?color=blue&label=stars&logo=github&style=flat)](https://github.com/moongardenmods/allium/stargazers)
+[![Discord](https://img.shields.io/discord/1349267321742557255?style=flat&logo=discord&color=5865f2)](https://discord.gg/rWSaP222G9)
 [![Allium Modrinth Downloads](https://img.shields.io/modrinth/dt/allium?color=00AF5C&label=allium&style=flat&logo=modrinth)](https://modrinth.com/mod/allium)
 [![Bouquet Modrinth Downloads](https://img.shields.io/modrinth/dt/bouquet?color=00AF5C&label=bouquet&style=flat&logo=modrinth)](https://modrinth.com/mod/bouquet)
+
 
 Lua script loader for Java Minecraft.
 

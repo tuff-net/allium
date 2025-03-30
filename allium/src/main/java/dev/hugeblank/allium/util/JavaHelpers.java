@@ -1,6 +1,7 @@
 package dev.hugeblank.allium.util;
 
 import dev.hugeblank.allium.loader.ScriptRegistry;
+import dev.hugeblank.allium.loader.type.AlliumClassUserdata;
 import dev.hugeblank.allium.loader.type.AlliumObjectUserdata;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import org.squiddev.cobalt.*;
@@ -47,6 +48,8 @@ public class JavaHelpers {
                 return EClass.fromJava(userdata.toUserdata(Class.class));
             }
             return EClass.fromJava(userdata.toUserdata().getClass());
+        } else if (value instanceof AlliumClassUserdata userdata) {
+            return (EClass<?>) userdata.instance;
         }
 
         throw new LuaError(new ClassNotFoundException());

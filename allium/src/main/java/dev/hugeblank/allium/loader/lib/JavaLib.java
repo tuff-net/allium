@@ -11,6 +11,7 @@ import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.util.JavaHelpers;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
+import net.fabricmc.mappingio.tree.VisitableMappingTree;
 import org.squiddev.cobalt.*;
 
 import java.util.List;
@@ -25,10 +26,10 @@ public class JavaLib implements WrappedLuaLibrary {
 
     @LuaWrapped
     public static @CoerceToNative List<String> fromMappings(@LuaStateArg LuaState state, String string) throws LuaError {
-        return getMappings(state).getUnmapped(string);
+        return getMappings(state).getClass(string).get;
     }
 
-    private static Mappings getMappings(LuaState state) throws LuaError {
+    private static VisitableMappingTree getMappings(LuaState state) throws LuaError {
         return ScriptRegistry.scriptFromState(state).getMappings();
     }
 
