@@ -7,23 +7,18 @@ import dev.hugeblank.allium.util.Registry;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EField;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
+import me.basiqueevangelist.enhancedreflection.api.EParameter;
+import net.fabricmc.mappingio.tree.VisitableMappingTree;
 import org.jetbrains.annotations.Debug;
 
 import java.util.*;
 
 @Debug.Renderer(text = "\"Mappings { ... }\"", hasChildren = "false")
-public record Mappings(String getID, Map<String, List<String>> mapped2unmapped, Map<String, String> unmapped2mapped) implements Identifiable {
-    public static final Registry<MappingsLoader> LOADERS = new Registry<>();
-    public static final Registry<Mappings> REGISTRY = new Registry<>();
+public record Mappings(VisitableMappingTree tree) {
 
-    public static Mappings of(String id, Map<String, String> unmapped2mapped) {
-        var mapped2unmapped = new HashMap<String, List<String>>();
 
-        for (var entry : unmapped2mapped.entrySet()) {
-            mapped2unmapped.computeIfAbsent(entry.getValue(), (s) -> new ArrayList<>()).add(entry.getKey());
-        }
-
-        return new Mappings(id, mapped2unmapped, unmapped2mapped);
+    public void mappedMethod(EMethod method) {
+        return tree.getMethod(method.declaringClass().name(), method.name(), );
     }
 
     public List<String> getUnmapped(String value) {
@@ -37,6 +32,12 @@ public record Mappings(String getID, Map<String, List<String>> mapped2unmapped, 
 
     public static String asMethod(String className, String method) {
         return (className + "#" + method).replace('/', '.');
+    }
+
+    private static String asDescriptor(List<EParameter> parameters) {
+        String vals = parameters.stream().map(EParameter::name).reduce("", (a, b) -> {
+
+        }, ());
     }
 
     public static String asMethod(EClass<?> clazz, EMethod method) {

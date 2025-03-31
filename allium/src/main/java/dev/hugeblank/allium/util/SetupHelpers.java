@@ -9,6 +9,7 @@ import dev.hugeblank.allium.api.AlliumExtension;
 import dev.hugeblank.allium.loader.Script;
 import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.PlatformMappings;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -55,9 +56,7 @@ public class SetupHelpers {
         ScriptRegistry registry = ScriptRegistry.getInstance();
         refs.forEach((ref) -> {
             String mappingsID = ref.manifest().mappings();
-            if (!Mappings.REGISTRY.has(mappingsID) && Mappings.LOADERS.has(mappingsID)) {
-                Mappings.REGISTRY.register(Mappings.of(mappingsID, Mappings.LOADERS.get(mappingsID).load()));
-            } else if (!Mappings.LOADERS.has(mappingsID)){
+            if (!PlatformMappings.hasLoader(mappingsID)){
                 Allium.LOGGER.error("No mappings exist with ID {} for script {}", mappingsID, ref.manifest().id());
                 refs.remove(ref);
                 return;

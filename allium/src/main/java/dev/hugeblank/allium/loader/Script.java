@@ -187,7 +187,7 @@ public class Script implements Identifiable {
         return manifest.name();
     }
 
-    public VisitableMappingTree getMappings() {
+    public Mappings getMappings() {
         return PlatformMappings.of(manifest.mappings());
     }
 

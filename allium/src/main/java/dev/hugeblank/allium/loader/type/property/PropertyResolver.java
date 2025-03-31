@@ -7,6 +7,7 @@ import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EField;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
 import dev.hugeblank.allium.mappings.Mappings;
+import net.fabricmc.mappingio.tree.VisitableMappingTree;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.Nullable;
 import org.squiddev.cobalt.LuaError;
@@ -115,9 +116,9 @@ public final class PropertyResolver {
 
     private static boolean resolveMethods(LuaState state, EClass<?> sourceClass, EMethod method, String targetName, @Nullable Consumer<EMethod> consumer) throws LuaError {
         String methodName = method.name();
-        Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
+        VisitableMappingTree mappings = ScriptRegistry.scriptFromState(state).getMappings();
 
-        var mappedName = mappings.getMapped(Mappings.asMethod(sourceClass, method)).split("#")[1];
+        var mappedName = mappings.getMethod().split("#")[1];
         if (mappedName.equals(targetName) || mappedName.equals("m_" + methodName)) {
             if (consumer == null) {
                 return true;

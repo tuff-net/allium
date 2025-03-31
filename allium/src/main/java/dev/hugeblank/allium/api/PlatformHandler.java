@@ -1,5 +1,6 @@
 package dev.hugeblank.allium.api;
 
+import dev.hugeblank.allium.mappings.Mappings;
 import dev.hugeblank.allium.util.Identifiable;
 import dev.hugeblank.allium.util.Registry;
 import net.fabricmc.mappingio.tree.VisitableMappingTree;
@@ -7,18 +8,19 @@ import net.fabricmc.mappingio.tree.VisitableMappingTree;
 import java.io.IOException;
 
 public abstract class PlatformHandler implements Identifiable {
-    private static final Registry<TreeReference> REGISTRY = new Registry<>();
+    private static final Registry<MappingReference> REGISTRY = new Registry<>();
 
-    public final VisitableMappingTree of() throws IOException {
-        if (!REGISTRY.has(getID())) REGISTRY.register(new TreeReference(getID(), getHandler()));
-        return REGISTRY.get(getID()).tree();
+    public final Mappings getOrCreate() throws IOException {
+        Mappings mappings = new Mappings(createMappingTree());
+        if (!REGISTRY.has(getID())) REGISTRY.register(new MappingReference(getID(), mappings));
+        return REGISTRY.get(getID()).mappings();
     }
 
-    protected abstract VisitableMappingTree getHandler() throws IOException;
+    protected abstract VisitableMappingTree createMappingTree() throws IOException;
 
     public abstract String getSourceNS();
 
     public abstract String getDestNS();
 
-    record TreeReference(String getID, VisitableMappingTree tree) implements Identifiable {}
+    record MappingReference(String getID, Mappings mappings) implements Identifiable {}
 }

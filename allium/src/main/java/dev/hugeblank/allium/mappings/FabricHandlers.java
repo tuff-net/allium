@@ -31,7 +31,7 @@ public class FabricHandlers {
         }
 
         @Override
-        protected VisitableMappingTree getHandler() throws IOException {
+        protected VisitableMappingTree createMappingTree() throws IOException {
             VisitableMappingTree yarn = new MemoryMappingTree(true);
             PlatformMappings.getLoader(mapping).load(yarn);
             VisitableMappingTree reverseYarn = new MemoryMappingTree(true);
@@ -58,7 +58,7 @@ public class FabricHandlers {
     static class MojangHandler extends PlatformHandler {
 
         @Override
-        protected VisitableMappingTree getHandler() throws IOException {
+        protected VisitableMappingTree createMappingTree() throws IOException {
             VisitableMappingTree mojang = new MemoryMappingTree(true);
             PlatformMappings.getLoader("mojang").load(mojang);
             VisitableMappingTree intermediary = new MemoryMappingTree();

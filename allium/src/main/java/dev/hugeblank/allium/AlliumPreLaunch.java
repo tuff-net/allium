@@ -15,9 +15,9 @@ public class AlliumPreLaunch implements PreLaunchEntrypoint {
 
         SetupHelpers.initializeDirectories();
 
-        Mappings.LOADERS.register(new YarnLoader());
-        Mappings.LOADERS.register(new IntermediaryLoader());
-        Mappings.LOADERS.register(new MojangLoader());
+        PlatformMappings.registerLoader(new YarnLoader());
+        PlatformMappings.registerLoader(new IntermediaryLoader());
+        PlatformMappings.registerLoader(new MojangLoader());
 
         FabricHandlers.register();
 
