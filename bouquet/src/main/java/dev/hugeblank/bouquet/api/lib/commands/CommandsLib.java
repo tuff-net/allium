@@ -9,12 +9,16 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 // Functionally similar to ComputerCraft's commands API
 // See: https://github.com/cc-tweaked/CC-Tweaked/blob/mc-1.16.x/src/main/java/dan200/computercraft/shared/computer/apis/CommandAPI.java
 @LuaWrapped(name = "commands")
 public class CommandsLib implements WrappedLuaLibrary {
+
+    public static final List<CommandRegisterEntry> COMMANDS = new ArrayList<>();
 
     @LuaWrapped
     public void exec(MinecraftServer server, String... args) {

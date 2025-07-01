@@ -2,23 +2,25 @@ package dev.hugeblank.allium.loader.type.property;
 
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.loader.ScriptRegistry;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
 import dev.hugeblank.allium.util.AnnotationUtils;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EField;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
 import dev.hugeblank.allium.mappings.Mappings;
+import me.basiqueevangelist.enhancedreflection.api.EParameter;
+import net.fabricmc.mappingio.tree.MappingTree;
 import net.fabricmc.mappingio.tree.VisitableMappingTree;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.Nullable;
+import org.objectweb.asm.Type;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Predicate;
 
 public final class PropertyResolver {
@@ -116,30 +118,11 @@ public final class PropertyResolver {
 
     private static boolean resolveMethods(LuaState state, EClass<?> sourceClass, EMethod method, String targetName, @Nullable Consumer<EMethod> consumer) throws LuaError {
         String methodName = method.name();
-        VisitableMappingTree mappings = ScriptRegistry.scriptFromState(state).getMappings();
-
-        var mappedName = mappings.getMethod().split("#")[1];
-        if (mappedName.equals(targetName) || mappedName.equals("m_" + methodName)) {
-            if (consumer == null) {
-                return true;
-            } else {
-                consumer.accept(method);
-            }
-        }
-
-        for (var clazz : sourceClass.allInterfaces()) {
-            mappedName = mappings.getMapped(Mappings.asMethod(clazz, method)).split("#")[1];
-            if (mappedName.equals(targetName) || mappedName.equals("m_" + methodName)) {
-                if (consumer == null) {
-                    return true;
-                } else {
-                    consumer.accept(method);
-                }
-            }
-        }
-
-        for (var clazz : sourceClass.allSuperclasses()) {
-            mappedName = mappings.getMapped(Mappings.asMethod(clazz, method)).split("#")[1];
+        Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
+        try {
+            MappingTree.ClassMapping classMapping = mappings.toMappedClass(Mappings.toSlashedClasspath(sourceClass.name()));
+            final String methodDesc = Type.getMethodDescriptor(method.raw());
+            String mappedName = mappings.toMappedMemberName(classMapping, method.name(), methodDesc);
             if (mappedName.equals(targetName) || mappedName.equals("m_" + methodName)) {
                 if (consumer == null) {
                     return true;
@@ -148,8 +131,9 @@ public final class PropertyResolver {
                 }
             }
 
-            for (var iface : clazz.allInterfaces()) {
-                mappedName = mappings.getMapped(Mappings.asMethod(iface, method)).split("#")[1];
+            for (var clazz : sourceClass.allInterfaces()) {
+                MappingTree.ClassMapping interfaceMapping = mappings.toMappedClass(Mappings.toSlashedClasspath(clazz.name()));
+                mappedName = mappings.toMappedMemberName(interfaceMapping, method.name(), methodDesc);
                 if (mappedName.equals(targetName) || mappedName.equals("m_" + methodName)) {
                     if (consumer == null) {
                         return true;
@@ -158,7 +142,34 @@ public final class PropertyResolver {
                     }
                 }
             }
+
+            for (var clazz : sourceClass.allSuperclasses()) {
+                MappingTree.ClassMapping superMapping = mappings.toMappedClass(Mappings.toSlashedClasspath(clazz.name()));
+                mappedName = mappings.toMappedMemberName(superMapping, method.name(), methodDesc);
+                if (mappedName.equals(targetName) || mappedName.equals("m_" + methodName)) {
+                    if (consumer == null) {
+                        return true;
+                    } else {
+                        consumer.accept(method);
+                    }
+                }
+
+                for (var iface : clazz.allInterfaces()) {
+                    MappingTree.ClassMapping interfaceMapping = mappings.toMappedClass(Mappings.toSlashedClasspath(iface.name()));
+                    mappedName = mappings.toMappedMemberName(interfaceMapping, method.name(), methodDesc);
+                    if (mappedName.equals(targetName) || mappedName.equals("m_" + methodName)) {
+                        if (consumer == null) {
+                            return true;
+                        } else {
+                            consumer.accept(method);
+                        }
+                    }
+                }
+            }
+        } catch (NoSuchMappingException ignored) {
+            // TODO: Handle or warn
         }
+
         return false;
     }
 
@@ -184,15 +195,20 @@ public final class PropertyResolver {
                 }
             } else {
                 Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
-
-                if (mappings.getMapped(Mappings.asMethod(sourceClass, field)).split("#")[1].equals(name)) {
-                    return field;
-                }
-
-                for (var clazz : sourceClass.allSuperclasses()) {
-                    if (mappings.getMapped(Mappings.asMethod(clazz, field)).split("#")[1].equals(name)) {
+                try {
+                    MappingTree.ClassMapping classMapping = mappings.toMappedClass(Mappings.toSlashedClasspath(sourceClass.name()));
+                    if (mappings.toMappedMemberName(classMapping, field.name(), Mappings.toSlashedClasspath(field.rawFieldType().name())).equals(name)) {
                         return field;
                     }
+
+                    for (var clazz : sourceClass.allSuperclasses()) {
+                        MappingTree.ClassMapping superClassMapping = mappings.toMappedClass(Mappings.toSlashedClasspath(clazz.name()));
+                        if (mappings.toMappedMemberName(superClassMapping, field.name(), Mappings.toSlashedClasspath(field.rawFieldType().name())).equals(name)) {
+                            return field;
+                        }
+                    }
+                } catch (NoSuchMappingException e) {
+                    Allium.LOGGER.warn("Could not find field mapping", e);
                 }
             }
         }

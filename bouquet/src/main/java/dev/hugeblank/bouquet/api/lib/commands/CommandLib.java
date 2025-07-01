@@ -9,7 +9,7 @@ import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 
-import static dev.hugeblank.bouquet.api.lib.AlliumLib.COMMANDS;
+import static dev.hugeblank.bouquet.api.lib.commands.CommandsLib.COMMANDS;
 
 @LuaWrapped(name = "command")
 public class CommandLib implements WrappedLuaLibrary {

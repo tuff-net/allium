@@ -2,6 +2,7 @@ package dev.hugeblank.allium.util.asm;
 
 import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.loader.ScriptRegistry;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
 import org.objectweb.asm.*;
 import org.objectweb.asm.util.CheckClassAdapter;
 import org.squiddev.cobalt.LuaError;
@@ -94,7 +95,17 @@ public class AsmUtil {
             type = type.getElementType();
         }
         if (type.getSort() == Type.OBJECT) {
-            builder.append("L").append(ScriptRegistry.scriptFromState(state).getMappings().getMapped(type.getInternalName())).append(";");
+            builder.append("L");
+            if (Allium.DEVELOPMENT) {
+                builder.append(type.getInternalName());
+            } else {
+                try {
+                    builder.append(ScriptRegistry.scriptFromState(state).getMappings().toMappedClassName(type.getInternalName()));
+                } catch (NoSuchMappingException e) {
+                    builder.append(type.getInternalName());
+                }
+            }
+            builder.append(";");
         } else {
             builder.append(type.getDescriptor());
         }

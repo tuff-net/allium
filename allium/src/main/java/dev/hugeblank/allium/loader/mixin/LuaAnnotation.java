@@ -1,9 +1,11 @@
 package dev.hugeblank.allium.loader.mixin;
 
+import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.loader.type.InvalidArgumentException;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
 import dev.hugeblank.allium.util.asm.VisitedClass;
 import dev.hugeblank.allium.util.asm.VisitedMember;
 import me.basiqueevangelist.enhancedreflection.api.ClassType;
@@ -114,10 +116,16 @@ public class LuaAnnotation implements Annotating {
 
     private void unmapTypeArg(StringBuilder unmappedDescriptor, Type arg) throws LuaError {
         if (arg.getSort() == Type.OBJECT) {
-            Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
+            String unmappedName = arg.getInternalName();
+            if (!Allium.DEVELOPMENT) {
+                try {
+                    unmappedName = ScriptRegistry.scriptFromState(state).getMappings().toUnmappedClassName(arg.getInternalName());
+                } catch (NoSuchMappingException ignored) {}
+            }
+
             unmappedDescriptor
                     .append("L")
-                    .append(mappings.getUnmapped(Mappings.asClass(arg.getInternalName())).get(0).replace(".", "/"))
+                    .append(unmappedName)
                     .append(";");
         } else {
             unmappedDescriptor.append(arg.getInternalName());

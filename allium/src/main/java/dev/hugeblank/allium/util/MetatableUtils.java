@@ -7,6 +7,8 @@ import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import dev.hugeblank.allium.loader.type.property.PropertyData;
 import dev.hugeblank.allium.loader.type.property.PropertyResolver;
+import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import me.basiqueevangelist.enhancedreflection.api.EMember;
 import me.basiqueevangelist.enhancedreflection.api.EMethod;
@@ -97,7 +99,11 @@ public class MetatableUtils {
                     cachedProperties.put(memberName, propertyData);
                 }
 
-                if (!Allium.DEVELOPMENT) memberName = ScriptRegistry.scriptFromState(state).getMappings().getMapped(memberName);
+                if (!Allium.DEVELOPMENT) {
+                    try {
+                        memberName = Mappings.toDottedClasspath(ScriptRegistry.scriptFromState(state).getMappings().toMappedClassName(Mappings.toSlashedClasspath(memberName)));
+                    } catch (NoSuchMappingException ignored) {}
+                }
 
                 varargs.add(ValueFactory.varargsOf(LuaString.valueOf(memberName), propertyData.get(
                         memberName,

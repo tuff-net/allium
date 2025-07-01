@@ -1,7 +1,10 @@
 package dev.hugeblank.allium.util.asm;
 
+import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
+import net.fabricmc.mappingio.tree.MappingTree;
 import org.objectweb.asm.*;
 import org.spongepowered.asm.mixin.injection.struct.MemberInfo;
 import org.squiddev.cobalt.LuaError;
@@ -91,11 +94,11 @@ public class VisitedClass {
     }
 
     void addVisitedField(LuaState state, int access, String name, String descriptor, String signature, Object value) throws LuaError {
-        visitedFields.put(findMapping(state, name), new VisitedField(this, access, name, descriptor, signature, value));
+        visitedFields.put(findMemberMapping(state, name, descriptor), new VisitedField(this, access, name, descriptor, signature, value));
     }
 
     void addVisitedMethod(LuaState state, int access, String name, String descriptor, String signature, String[] exceptions) throws LuaError {
-        String key = "L" + mappingsPair.mappedPath() + ";" + findMapping(state, name);
+        String key = "L" + mappingsPair.mappedPath() + ";" + findMemberMapping(state, name, descriptor);
         StringBuilder mappedDescriptor = new StringBuilder("(");
         for (Type arg : Type.getArgumentTypes(descriptor)) {
             mapTypeArg(state, mappedDescriptor, arg);
@@ -108,27 +111,40 @@ public class VisitedClass {
         visitedMethods.put(key, new VisitedMethod(this, access, name, descriptor, signature, exceptions));
     }
 
-    private String findMapping(LuaState state, String methodName) throws LuaError {
+    private String findMemberMapping(LuaState state, String memberName, String descriptor) throws LuaError {
         Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
-        String mapped = Mappings.asMethod(mappingsPair.mappedPath(), methodName);
-        String target = mappings.getMapped(mapped);
-        if (!target.equals(mapped)) {
-            return target.split("#")[1];
-        }
-        for (VisitedClass visitedClass : inheritance) {
-            target = visitedClass.findMapping(state, methodName);
-            if (!target.equals(mapped)) {
-                return target.split("#")[1];
+        try {
+            MappingTree.ClassMapping classMapping = mappings.toUnmappedClass(name());
+            String target = null;
+            try {
+                target = mappings.toMappedMemberName(classMapping, memberName, descriptor);
+            } catch (NoSuchMappingException ignored) {}
+            if (target != null) {
+                return target;
             }
+            for (VisitedClass visitedClass : inheritance) {
+                target = visitedClass.findMemberMapping(state, memberName, descriptor);
+                if (target != null) {
+                    return target;
+                }
+            }
+        } catch (NoSuchMappingException e) {
+            // TODO: Warn, and probably extract out to constructor
         }
-        return methodName;
+        return memberName;
     }
 
     private void mapTypeArg(LuaState state, StringBuilder mappedDescriptor, Type arg) throws LuaError {
         if (arg.getSort() == Type.OBJECT) {
+            String mappedType = arg.getInternalName();
+            if (!Allium.DEVELOPMENT) {
+                try {
+                    mappedType = ScriptRegistry.scriptFromState(state).getMappings().toMappedClassName(arg.getInternalName());
+                } catch (NoSuchMappingException ignored) {}
+            }
             mappedDescriptor
                     .append("L")
-                    .append(ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(arg.getInternalName()).get(0))
+                    .append(mappedType)
                     .append(";");
         } else {
             mappedDescriptor.append(arg.getInternalName());
@@ -164,9 +180,18 @@ public class VisitedClass {
     }
 
     public static MemberInfo remap(LuaState state, MemberInfo info) throws LuaError {
-        String[] unmappedSrc = ScriptRegistry.scriptFromState(state).getMappings()
-                .getUnmapped(Mappings.asMethod(info.getOwner(), info.getName())).get(0).split("#");
-        return new MemberInfo(unmappedSrc[1], unmappedSrc[0], info.getDesc());
+        Mappings mappings = ScriptRegistry.scriptFromState(state).getMappings();
+        MappingTree.MemberMapping unmappedSrc;
+        try {
+            unmappedSrc = mappings.toUnmappedMember(mappings.toUnmappedClass(info.getOwner()), info.getName(), info.getDesc());
+        } catch (NoSuchMappingException e) {
+            throw new RuntimeException(e);
+        }
+        return new MemberInfo(
+                unmappedSrc.getName(mappings.getDstID()),
+                unmappedSrc.getOwner().getDstName(mappings.getDstID()),
+                unmappedSrc.getDesc(mappings.getDstID())
+        );
     }
 
     public static MemberInfo parseDescriptor(VisitedClass visitedClass, String descriptor) {

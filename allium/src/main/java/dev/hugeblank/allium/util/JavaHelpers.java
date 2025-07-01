@@ -3,6 +3,8 @@ package dev.hugeblank.allium.util;
 import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.loader.type.AlliumClassUserdata;
 import dev.hugeblank.allium.loader.type.AlliumObjectUserdata;
+import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
 import org.squiddev.cobalt.*;
 
@@ -21,14 +23,17 @@ public class JavaHelpers {
     }
 
     public static EClass<?> getRawClass(LuaState state, String className) throws LuaError {
-            try {
-                className = ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(className).get(0);
-                return EClass.fromJava(Class.forName(className));
-            } catch (ClassNotFoundException ignored) {}
+        try {
+            className = ScriptRegistry.scriptFromState(state).getMappings()
+                    .toUnmappedClassName(Mappings.toSlashedClasspath(className));
+            if (className != null) return EClass.fromJava(Class.forName(Mappings.toDottedClasspath(className)));
+        } catch (NoSuchMappingException e) {
+            // TODO: Warn if not in dev
+        } catch (ClassNotFoundException ignored) {}
 
-            try {
-                return EClass.fromJava(Class.forName(className));
-            } catch (ClassNotFoundException ignored) {}
+        try {
+            return EClass.fromJava(Class.forName(className));
+        } catch (ClassNotFoundException ignored) {}
 
         throw new LuaError("Couldn't find class \"" + className + "\"");
     }

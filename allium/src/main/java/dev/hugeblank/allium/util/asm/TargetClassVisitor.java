@@ -1,7 +1,9 @@
 package dev.hugeblank.allium.util.asm;
 
+import dev.hugeblank.allium.Allium;
 import dev.hugeblank.allium.loader.ScriptRegistry;
 import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
 import org.objectweb.asm.*;
 import org.spongepowered.asm.service.MixinService;
 import org.squiddev.cobalt.LuaError;
@@ -63,7 +65,7 @@ public class TargetClassVisitor extends ClassVisitor {
     public static VisitedClass parseTarget(LuaState state, String mappedTarget, String unmappedTarget) throws IOException, LuaError {
         TargetClassVisitor visitor = new TargetClassVisitor(state, mappedTarget, ASM9);
         new ClassReader(MixinService.getService().getResourceAsStream(
-                unmappedTarget.replace(".", "/") + ".class")
+                unmappedTarget + ".class")
         ).accept(
                 visitor, ClassReader.SKIP_FRAMES
         );
@@ -71,23 +73,42 @@ public class TargetClassVisitor extends ClassVisitor {
         if (visitor.instance.superName() != null) inheritanceNames.add(visitor.instance.superName());
         inheritanceNames.addAll(List.of(visitor.instance.interfaces()));
         for (String name : inheritanceNames) {
-            visitor.instance.addInheritance(parseUnmappedTarget(state, Mappings.asClass(name)));
+            visitor.instance.addInheritance(parseUnmappedTarget(state, Mappings.toDottedClasspath(name)));
         }
         if (visitor.getError() != null) throw visitor.getError();
         return visitor.instance;
     }
 
     public static VisitedClass parseUnmappedTarget(LuaState state, String unmappedTarget) throws LuaError, IOException {
-        String mappedTarget = ScriptRegistry.scriptFromState(state).getMappings().getMapped(unmappedTarget);
+        String mappedTarget;
+        if (!Allium.DEVELOPMENT) {
+            try {
+                mappedTarget = ScriptRegistry.scriptFromState(state).getMappings().toMappedClassName(unmappedTarget);
+            } catch (NoSuchMappingException ignored) {
+                mappedTarget = unmappedTarget;
+            }
+        } else {
+            mappedTarget = unmappedTarget;
+        }
         return parseTarget(state, mappedTarget, unmappedTarget);
     }
 
     public static VisitedClass parseMappedTarget(LuaState state, String mappedTarget) throws LuaError, IOException {
-        String unmappedTarget = ScriptRegistry.scriptFromState(state).getMappings().getUnmapped(mappedTarget).get(0);
+        String unmappedTarget;
+        if (!Allium.DEVELOPMENT) {
+            try {
+                unmappedTarget = ScriptRegistry.scriptFromState(state).getMappings().toUnmappedClassName(Mappings.toSlashedClasspath(mappedTarget));
+            } catch (NoSuchMappingException e) {
+                unmappedTarget = mappedTarget; // TODO: Warn that mapping couldn't be found
+            }
+        } else {
+            unmappedTarget = mappedTarget;
+        }
         return parseTarget(state, mappedTarget, unmappedTarget);
     }
 
     public record MappingsPair(String unmapped, String mapped) {
+        // TODO: Make a class, replace in constructor
         public String unmappedPath() {
             return unmapped.replace(".", "/");
         }

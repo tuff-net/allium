@@ -1,58 +1,118 @@
 package dev.hugeblank.allium.mappings;
 
 import dev.hugeblank.allium.Allium;
-import dev.hugeblank.allium.api.MappingsLoader;
-import dev.hugeblank.allium.util.Identifiable;
-import dev.hugeblank.allium.util.Registry;
+import dev.hugeblank.allium.loader.type.annotation.LuaWrapped;
 import me.basiqueevangelist.enhancedreflection.api.EClass;
-import me.basiqueevangelist.enhancedreflection.api.EField;
-import me.basiqueevangelist.enhancedreflection.api.EMethod;
-import me.basiqueevangelist.enhancedreflection.api.EParameter;
+import me.basiqueevangelist.enhancedreflection.api.EMember;
+import net.fabricmc.mappingio.tree.MappingTree;
 import net.fabricmc.mappingio.tree.VisitableMappingTree;
 import org.jetbrains.annotations.Debug;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
+@LuaWrapped
 @Debug.Renderer(text = "\"Mappings { ... }\"", hasChildren = "false")
-public record Mappings(VisitableMappingTree tree) {
+public class Mappings {
+    private final VisitableMappingTree tree;
+    private final int dstID;
 
 
-    public void mappedMethod(EMethod method) {
-        return tree.getMethod(method.declaringClass().name(), method.name(), );
+    public Mappings(@NotNull VisitableMappingTree tree, String namedNS) {
+        this.tree = tree;
+        this.dstID = tree.getNamespaceId(namedNS);
     }
 
-    public List<String> getUnmapped(String value) {
-        var val = this.mapped2unmapped.get(value);
-        return val != null && !Allium.DEVELOPMENT ? val : List.of(value);
+    public int getDstID() {
+        return dstID;
     }
 
-    public String getMapped(String value) {
-        return this.unmapped2mapped.getOrDefault(value, value);
+    @LuaWrapped
+    public MappingTree.ClassMapping toMappedClass(String unmappedName) throws NoSuchMappingException {
+        MappingTree.ClassMapping classMapping = tree.getClass(unmappedName);
+        if (classMapping == null) throw new NoSuchMappingException(tree, unmappedName);
+        return classMapping;
     }
 
-    public static String asMethod(String className, String method) {
-        return (className + "#" + method).replace('/', '.');
+    @LuaWrapped
+    public String toMappedClassName(String unmappedName) throws NoSuchMappingException {
+        MappingTree.ClassMapping classMapping = toMappedClass(unmappedName);
+        String result = classMapping.getDstName(dstID);
+        if (result == null) throw new NoSuchMappingException(tree, unmappedName);
+        return result;
     }
 
-    private static String asDescriptor(List<EParameter> parameters) {
-        String vals = parameters.stream().map(EParameter::name).reduce("", (a, b) -> {
-
-        }, ());
+    @LuaWrapped
+    public MappingTree.MemberMapping toMappedMember(MappingTree.ClassMapping classMapping, String unmappedName, String unmappedDescriptor) throws NoSuchMappingException {
+        MappingTree.MethodMapping methodMapping = classMapping.getMethod(unmappedName, unmappedDescriptor, dstID);
+        MappingTree.FieldMapping fieldMapping = classMapping.getField(unmappedName, unmappedDescriptor, dstID);
+        if (methodMapping == null && fieldMapping == null) throw new NoSuchMappingException(tree, unmappedName + unmappedDescriptor);
+        return methodMapping != null ? methodMapping : fieldMapping;
     }
 
-    public static String asMethod(EClass<?> clazz, EMethod method) {
-        return asMethod(clazz.name(), method.name());
+    @LuaWrapped
+    public String toMappedMemberName(MappingTree.ClassMapping classMapping, String unmappedName, String unmappedDescriptor) throws NoSuchMappingException {
+        MappingTree.MemberMapping memberMapping = toMappedMember(classMapping, unmappedName, unmappedDescriptor);
+        String result = memberMapping.getDstName(dstID);
+        if (result == null) throw new NoSuchMappingException(tree, unmappedName);
+        return result;
     }
 
-    public static String asMethod(EClass<?> clazz, EField field) {
-        return asMethod(clazz.name(), field.name());
+    @LuaWrapped
+    public MappingTree.ClassMapping toUnmappedClass(String mappedName) throws NoSuchMappingException {
+        MappingTree.ClassMapping classMapping = tree.getClass(mappedName, dstID);
+        if (classMapping == null) throw new NoSuchMappingException(tree, mappedName);
+        return classMapping;
     }
 
-    public static String asClass(String className) {
+    @LuaWrapped
+    public String toUnmappedClassName(String mappedName) throws NoSuchMappingException {
+        MappingTree.ClassMapping classMapping = toUnmappedClass(mappedName);
+        String result = classMapping.getSrcName();
+        if (result == null) throw new NoSuchMappingException(tree, mappedName);
+        return result;
+    }
+
+    @LuaWrapped
+    public MappingTree.MemberMapping toUnmappedMember(MappingTree.ClassMapping classMapping, String mappedName, String mappedDescriptor) throws NoSuchMappingException {
+        MappingTree.MethodMapping methodMapping = classMapping.getMethod(mappedName, mappedDescriptor);
+        MappingTree.FieldMapping fieldMapping = classMapping.getField(mappedName, mappedDescriptor);
+        if (methodMapping == null && fieldMapping == null) throw new NoSuchMappingException(tree, mappedName + mappedDescriptor);
+        return methodMapping != null ? methodMapping : fieldMapping;
+    }
+
+    @LuaWrapped
+    public String toUnmappedMemberName(MappingTree.ClassMapping classMapping, String mappedName, String mappedDescriptor) throws NoSuchMappingException {
+        MappingTree.MemberMapping memberMapping = toUnmappedMember(classMapping, mappedName, mappedDescriptor);
+        String result = memberMapping.getSrcName();
+        if (result == null) throw new NoSuchMappingException(tree, mappedName);
+        return result;
+    }
+
+
+    @LuaWrapped
+    public static String toDottedMember(String className, String method) {
+        return toDottedClasspath(className) + "#" + method;
+    }
+
+    @LuaWrapped
+    public static String toDottedMember(EClass<?> clazz, EMember member) {
+        return toDottedMember(clazz.name(), member.name());
+    }
+
+    @LuaWrapped
+    public static String toDottedClasspath(String className) {
         return className.replace('/', '.');
     }
 
-    public static String asClass(EClass<?> clazz) {
-        return asClass(clazz.name());
+    @LuaWrapped
+    public static String toDottedClasspath(EClass<?> clazz) {
+        return toDottedClasspath(clazz.name());
+    }
+
+    @LuaWrapped
+    public static String toSlashedClasspath(String className) {
+        return className.replace('.', '/');
     }
 }

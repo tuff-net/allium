@@ -2,8 +2,8 @@ package dev.hugeblank.bouquet.mixin.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import dev.hugeblank.bouquet.api.event.ServerEvents;
-import dev.hugeblank.bouquet.api.lib.AlliumLib;
 import dev.hugeblank.bouquet.api.lib.commands.CommandRegisterEntry;
+import dev.hugeblank.bouquet.api.lib.commands.CommandsLib;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
@@ -22,7 +22,7 @@ public class CommandManagerMixin {
 
     @Inject(at = @At("TAIL"), method = "<init>")
     private void init(CommandManager.RegistrationEnvironment environment, CommandRegistryAccess commandRegistryAccess, CallbackInfo ci) {
-        AlliumLib.COMMANDS.forEach((entry) -> {
+        CommandsLib.COMMANDS.forEach((entry) -> {
             if (
                     (
                             environment.equals(entry.environment()) ||

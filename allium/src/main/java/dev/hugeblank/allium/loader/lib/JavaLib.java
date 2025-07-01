@@ -20,20 +20,6 @@ import java.util.List;
 public class JavaLib implements WrappedLuaLibrary {
 
     @LuaWrapped
-    public static String toMappings(@LuaStateArg LuaState state, String string) throws LuaError {
-        return getMappings(state).getMapped(string);
-    }
-
-    @LuaWrapped
-    public static @CoerceToNative List<String> fromMappings(@LuaStateArg LuaState state, String string) throws LuaError {
-        return getMappings(state).getClass(string).get;
-    }
-
-    private static VisitableMappingTree getMappings(LuaState state) throws LuaError {
-        return ScriptRegistry.scriptFromState(state).getMappings();
-    }
-
-    @LuaWrapped
     public static LuaValue cast(@LuaStateArg LuaState state, LuaUserdata object, EClass<?> klass) throws LuaError {
         try {
             return TypeCoercions.toLuaValue(TypeCoercions.toJava(state, object, klass), klass);

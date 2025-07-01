@@ -8,6 +8,7 @@ import dev.hugeblank.allium.loader.type.annotation.LuaStateArg;
 import dev.hugeblank.allium.loader.type.annotation.OptionalArg;
 import dev.hugeblank.allium.loader.type.coercion.TypeCoercions;
 import dev.hugeblank.allium.mappings.Mappings;
+import dev.hugeblank.allium.mappings.NoSuchMappingException;
 import me.basiqueevangelist.enhancedreflection.api.EParameter;
 import org.squiddev.cobalt.*;
 
@@ -90,7 +91,9 @@ public class ArgumentUtils {
                     optionalsStarted = true;
                 }
 
-                sb.append(Allium.DEVELOPMENT ? param : ScriptRegistry.scriptFromState(state).getMappings().getMapped(Mappings.asClass(param.rawParameterType())));
+                try {
+                    sb.append(Allium.DEVELOPMENT ? param : Mappings.toDottedClasspath(ScriptRegistry.scriptFromState(state).getMappings().toMappedClassName(Mappings.toSlashedClasspath(param.rawParameterType().name()))));
+                } catch (NoSuchMappingException ignored) {}
             }
 
         }
