@@ -7,6 +7,7 @@ import org.objectweb.asm.util.CheckClassAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.objectweb.asm.Opcodes.*;
@@ -89,5 +90,21 @@ public class AsmUtil {
             case Type.DOUBLE
                 -> m.visitMethodInsn(INVOKEVIRTUAL, Type.getInternalName(Double.class), "doubleValue", "()D", false);
         }
+    }
+
+    public static int unwrapAccess(Map<String, Boolean> access, int allow) {
+        int result = containsFlag(access, "private", ACC_PRIVATE) |
+                containsFlag(access, "protected", ACC_PROTECTED) |
+                containsFlag(access, "public", ACC_PUBLIC) |
+                containsFlag(access, "static", ACC_STATIC) |
+                containsFlag(access, "final", ACC_FINAL) |
+                containsFlag(access, "abstract", ACC_ABSTRACT) |
+                containsFlag(access, "interface", ACC_INTERFACE | ACC_ABSTRACT );
+
+        return result & allow;
+    }
+
+    private static int containsFlag(Map<String, Boolean> access, String key, int flag) {
+        return access.getOrDefault(key, false) ? flag : 0;
     }
 }

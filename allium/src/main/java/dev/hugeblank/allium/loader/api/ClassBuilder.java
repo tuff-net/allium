@@ -31,6 +31,7 @@ import static org.objectweb.asm.Opcodes.*;
 public class ClassBuilder {
     protected final EClass<?> superClass;
     protected final String className;
+    protected final Map<String, Boolean> classAccess;
     protected final LuaState state;
     protected final ClassWriter c = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
     private final List<EMethod> methods = new ArrayList<>();
@@ -40,43 +41,17 @@ public class ClassBuilder {
     public ClassBuilder(EClass<?> superClass, List<EClass<?>> interfaces, Map<String, Boolean> access, LuaState state) {
         this.state = state;
         this.className = AsmUtil.getUniqueClassName();
+        this.classAccess = access;
         this.fields = new ClassFieldBuilder(className, c);
 
         this.c.visit(
                 V17,
-                ACC_PUBLIC | (access.getOrDefault("interface", false) ? ACC_INTERFACE | ACC_ABSTRACT : 0) | (access.getOrDefault("abstract", false) ? ACC_ABSTRACT : 0),
+                ACC_PUBLIC | AsmUtil.unwrapAccess(access, ACC_ABSTRACT | ACC_INTERFACE),
                 className,
                 null,
                 superClass.name().replace('.', '/'),
                 interfaces.stream().map(x -> x.name().replace('.', '/')).toArray(String[]::new)
         );
-
-        if (!access.getOrDefault("interface", false)){
-            for (EConstructor<?> superCtor : superClass.constructors()) {
-                if (!superCtor.isPublic()) continue;
-
-                var desc = Type.getConstructorDescriptor(superCtor.raw());
-                var m = c.visitMethod(superCtor.modifiers(), "<init>", desc, null, null);
-                m.visitCode();
-                var args = Type.getArgumentTypes(desc);
-
-                m.visitVarInsn(ALOAD, 0);
-
-                int argIndex = 1;
-
-                for (Type arg : args) {
-                    m.visitVarInsn(arg.getOpcode(ILOAD), argIndex);
-
-                    argIndex += arg.getSize();
-                }
-
-                m.visitMethodInsn(INVOKESPECIAL, Type.getInternalName(superClass.raw()), "<init>", desc, false);
-                m.visitInsn(RETURN);
-
-                m.visitMaxs(0, 0);
-                m.visitEnd();
-            }
-        }
 
         this.superClass = superClass;
         this.methods.addAll(this.superClass.methods());
@@ -91,7 +66,7 @@ public class ClassBuilder {
         if (access.size() > 1) {
             ScriptRegistry.scriptFromState(state).getLogger().warn("Flags on method override besides 'static' are ignored. For method {}", methodName);
         }
-        PropertyResolver.collectMethods(state, this.superClass, this.methods, methodName, access.getOrDefault("static", false), methods::add);
+        PropertyResolver.collectMethods(state, this.superClass, this.methods, methodName, AsmUtil.unwrapAccess(access, ACC_STATIC) == ACC_STATIC, methods::add);
 
         for (var method : methods) {
             var methParams = method.parameters();
@@ -130,14 +105,10 @@ public class ClassBuilder {
             methodName,
             Arrays.stream(params).map(x -> new WrappedType(x, x)).toArray(WrappedType[]::new),
             returnClass == null ? null : new WrappedType(returnClass, returnClass),
-            ACC_PUBLIC | handleMethodAccess(access),
+            ACC_PUBLIC | AsmUtil.unwrapAccess(access, ACC_ABSTRACT | ACC_STATIC),
             func
         );
 
-    }
-
-    private int handleMethodAccess(Map<String, Boolean> access) {
-        return (access.getOrDefault("abstract", false) ? ACC_ABSTRACT : 0) | (access.getOrDefault("static", false) ? ACC_STATIC : 0);
     }
 
     private void writeMethod(String methodName, WrappedType[] params, WrappedType returnClass, int access, @Nullable LuaFunction func) {
@@ -191,10 +162,8 @@ public class ClassBuilder {
             fields.storeAndGet(m, state, LuaState.class); // state
             if (!isVoid) m.visitInsn(DUP); // state, state?
             fields.storeAndGet(m, func, LuaFunction.class); // state, state?, function
-//            m.visitInsn(SWAP);
             m.visitVarInsn(ALOAD, varPrefix); // state, state, function, luavalue[]
             m.visitMethodInsn(INVOKESTATIC, Type.getInternalName(ValueFactory.class), "varargsOf", "([Lorg/squiddev/cobalt/LuaValue;)Lorg/squiddev/cobalt/Varargs;", false); // state, state?, function, varargs
-//            m.visitMethodInsn(INVOKEVIRTUAL, Type.getInternalName(LuaFunction.class), "invoke", "(Lorg/squiddev/cobalt/LuaState;Lorg/squiddev/cobalt/Varargs;)Lorg/squiddev/cobalt/Varargs;", false);
             m.visitMethodInsn(INVOKESTATIC, Type.getInternalName(Dispatch.class), "invoke", "(Lorg/squiddev/cobalt/LuaState;Lorg/squiddev/cobalt/LuaValue;Lorg/squiddev/cobalt/Varargs;)Lorg/squiddev/cobalt/Varargs;", false); // state?, varargs
 
             if (!isVoid) {
@@ -221,7 +190,43 @@ public class ClassBuilder {
     }
 
     @LuaWrapped
-    public LuaValue build() throws LuaError {
+    public LuaValue build() {
+        if (!classAccess.getOrDefault("interface", false)){
+            for (EConstructor<?> superCtor : superClass.constructors()) {
+                if (!superCtor.isPublic()) continue;
+
+                ArrayList<Type> types = new ArrayList<>(
+                        List.of(Type.getArgumentTypes(Type.getConstructorDescriptor(superCtor.raw())))
+                );
+                int fieldOffset = types.size();
+                types.addAll(fields.instanceFields());
+                String desc = Type.getMethodDescriptor(Type.VOID_TYPE, types.toArray(new Type[0]));
+
+                var m = c.visitMethod(superCtor.modifiers(), "<init>", desc, null, null);
+                m.visitCode();
+                var args = Type.getArgumentTypes(desc);
+
+                m.visitVarInsn(ALOAD, 0);
+
+                int argIndex = 1;
+
+                for (Type arg : args) {
+                    m.visitVarInsn(arg.getOpcode(ILOAD), argIndex);
+
+                    argIndex += arg.getSize();
+                }
+
+                m.visitMethodInsn(INVOKESPECIAL, Type.getInternalName(superClass.raw()), "<init>", desc, false);
+
+                fields.applyConstructor(m, fieldOffset);
+
+                m.visitInsn(RETURN);
+
+                m.visitMaxs(0, 0);
+                m.visitEnd();
+            }
+        }
+
         byte[] classBytes = c.toByteArray();
 
         Class<?> klass = AsmUtil.defineClass(className, classBytes);
