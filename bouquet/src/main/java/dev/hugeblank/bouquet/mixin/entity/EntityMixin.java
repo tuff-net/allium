@@ -55,31 +55,29 @@ public class EntityMixin implements EntityDataHolder {
         }
     }
 
-    @Inject(method = "writeNbt", at = @At("RETURN"))
-    private void allium_storeData(NbtCompound nbt, CallbackInfoReturnable<NbtCompound> cir) {
-        if (!this.allium_data.isEmpty()) {
-            NbtCompound data = new NbtCompound();
-            for (var entry : this.allium_data.entrySet()) {
-                var val = NbtLib.toNbtSafe(entry.getValue());
-                if (val != null) {
-                    data.put(entry.getKey(), val);
-                }
-            }
-            nbt.put("AlliumData", data);
+@Inject(method = "writeCustomDataToNbt", at = @At("RETURN"))
+private void allium_storeData(NbtCompound nbt, CallbackInfo ci) {
+    if (!this.allium_data.isEmpty()) {
+        NbtCompound data = new NbtCompound();
+        for (var entry : this.allium_data.entrySet()) {
+            var val = NbtLib.toNbtSafe(entry.getValue());
+            if (val != null) data.put(entry.getKey(), val);
         }
+        nbt.put("AlliumData", data);
     }
+}
 
-    @Inject(method = "readNbt", at = @At("RETURN"))
-    private void allium_readData(NbtCompound nbt, CallbackInfo ci) {
-        NbtCompound data = nbt.getCompoundOrEmpty("AlliumData");
-        for (String key : data.getKeys()) {
-            NbtElement val = data.get(key);
-            if (val != null) {
-                var luaVal = NbtLib.fromNbt(val);
-                if (luaVal != null) {
-                    this.allium_data.put(key, luaVal);
-                }
-            }
+@Inject(method = "readCustomDataFromNbt", at = @At("RETURN"))
+private void allium_readData(NbtCompound nbt, CallbackInfo ci) {
+    NbtCompound data = nbt.getCompoundOrEmpty("AlliumData");
+    for (String key : data.getKeys()) {
+        var val = data.get(key);
+        if (val != null) {
+            var luaVal = NbtLib.fromNbt(val);
+            if (luaVal != null) this.allium_data.put(key, luaVal);
         }
     }
+}
+
+
 }
