@@ -4,6 +4,7 @@ import dev.hugeblank.bouquet.api.lib.NbtLib;
 import dev.hugeblank.bouquet.util.EntityDataHolder;
 import net.minecraft.entity.Entity;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -43,7 +44,6 @@ public class EntityMixin implements EntityDataHolder {
         this.allium_data.put(key, value);
     }
 
-
     @Override
     public void allium_private$copyFromData(Entity source) {
         var mixined = (EntityMixin) (Object) source;
@@ -58,27 +58,27 @@ public class EntityMixin implements EntityDataHolder {
     @Inject(method = "writeNbt", at = @At("RETURN"))
     private void allium_storeData(NbtCompound nbt, CallbackInfoReturnable<NbtCompound> cir) {
         if (!this.allium_data.isEmpty()) {
-            var data = new NbtCompound();
-
+            NbtCompound data = new NbtCompound();
             for (var entry : this.allium_data.entrySet()) {
                 var val = NbtLib.toNbtSafe(entry.getValue());
                 if (val != null) {
                     data.put(entry.getKey(), val);
                 }
             }
-
             nbt.put("AlliumData", data);
         }
     }
 
     @Inject(method = "readNbt", at = @At("RETURN"))
     private void allium_readData(NbtCompound nbt, CallbackInfo ci) {
-        var data = nbt.getCompound("AlliumData");
-        for (var key : data.getKeys()) {
-            @SuppressWarnings("DataFlowIssue")
-            var val = NbtLib.fromNbt(data.get(key));
+        NbtCompound data = nbt.getCompoundOrEmpty("AlliumData");
+        for (String key : data.getKeys()) {
+            NbtElement val = data.get(key);
             if (val != null) {
-                this.allium_data.put(key, val);
+                var luaVal = NbtLib.fromNbt(val);
+                if (luaVal != null) {
+                    this.allium_data.put(key, luaVal);
+                }
             }
         }
     }

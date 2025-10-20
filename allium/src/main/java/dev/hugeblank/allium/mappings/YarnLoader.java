@@ -26,7 +26,7 @@ import java.util.*;
 public class YarnLoader implements MappingsLoader {
 
     private static final String MAPPINGS_JAR_LOCATION = "mappings/mappings.tiny";
-    private static final Path CACHED_MAPPINGS = FileHelper.MAPPINGS_CFG_DIR.resolve("mappings-" +  MinecraftVersion.create().getName() + ".tiny");
+    private static final Path CACHED_MAPPINGS = FileHelper.MAPPINGS_CFG_DIR.resolve("mappings-" +  MinecraftVersion.create().id() + ".tiny");
     private static final Path VERSION_FILE = FileHelper.MAPPINGS_CFG_DIR.resolve("yarn-version.txt");
 
     private static final String NAMESPACE_FROM = "intermediary";
@@ -135,7 +135,7 @@ public class YarnLoader implements MappingsLoader {
     }
 
     private static class YarnVersion {
-        private static final String YARN_API_ENTRYPOINT = "https://meta.fabricmc.net/v2/versions/yarn/" + MinecraftVersion.create().getName();
+        private static final String YARN_API_ENTRYPOINT = "https://meta.fabricmc.net/v2/versions/yarn/" + MinecraftVersion.create().id();
         private static String versionMemCache = null;
         public int build;
         public String version;
